@@ -1,5 +1,6 @@
 import http from "http";
 import https from "https";
+import StatusCodes from "http-status-codes";
 
 // TODO: Tighten error handling
 // TODO: Add support for versioning/ETags for data API requests
@@ -18,6 +19,8 @@ import https from "https";
 //     result
 //     version
 // }
+
+const {OK, FORBIDDEN} = StatusCodes
 
 const NOT_ALLOWED = 'Not allowed!'
 
@@ -233,6 +236,43 @@ export class Client {
 
     console.warn("Named check function not found", name)
     throw {msg: 'Named check function not found'}
+  }
+
+  /**
+   * Returns an HTTP proxy function
+   *
+   * @param onProxy
+   * @returns {(function(*, *): Promise<*>)|*}
+   */
+  proxy(onProxy = undefined) {
+    return async (req, res) => {
+      const {check: checkName, path: path} = req.body
+
+      let input = req.body.input ?? {}
+      if (onProxy) {
+        input = await onProxy(req, res, input)
+      }
+
+      console.debug('Proxied check:', path, input)
+
+      let checkResult;
+      try {
+        if (checkName) {
+          checkResult = await this.callNamedCheck(checkName, input)
+        } else {
+          checkResult = await this.check(path, input)
+        }
+      } catch (e) {
+        console.debug("Proxied check failed.", e)
+        checkResult = undefined
+      }
+
+      if (checkResult?.result === undefined) {
+        return res.status(FORBIDDEN).end()
+      }
+
+      return res.status(OK).json(checkResult).end()
+    }
   }
 }
 
