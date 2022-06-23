@@ -23,9 +23,11 @@ const NOT_ALLOWED = 'Not allowed!'
 
 export class Client {
   options
+  namedCheckFunctions
 
   constructor(options) {
     this.options = options
+    this.namedCheckFunctions = {}
   }
 
   /**
@@ -201,6 +203,36 @@ export class Client {
       .catch(err => {
         return Promise.reject({msg: 'DELETE data request failed', err: err});
       });
+  }
+
+  /**
+   * Register a named check function.
+   *
+   * @param name the name of the check function
+   * @param onCheck callback returning a `Promise` resolving to the check result body
+   */
+  registerNamedCheck(name, onCheck) {
+    this.namedCheckFunctions[name] = onCheck
+  }
+
+  /**
+   * Calls a named check function, if found.
+   * Returns a `Promise`, resolving to the check result body.
+   *
+   * @param name the name of the check function
+   * @param input the input document to pass to the check function
+   * @returns {Promise<*>}
+   */
+  async callNamedCheck(name, input) {
+    const namedCheck = this.namedCheckFunctions[name]
+
+    if (namedCheck) {
+      console.debug("Calling named check function", name)
+      return await namedCheck(this, input)
+    }
+
+    console.warn("Named check function not found", name)
+    throw {msg: 'Named check function not found'}
   }
 }
 
