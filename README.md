@@ -30,7 +30,7 @@ const options = {
     uid: 'user1',
     token: 'my_secret'
 }
-const client = Oz.New(options)
+const client = StyraRun.New(options)
 ```
 
 ### Check

@@ -1,6 +1,5 @@
 import http from "http";
 import https from "https";
-import StatusCodes from "http-status-codes";
 
 // TODO: Tighten error handling
 // TODO: Add support for versioning/ETags for data API requests
@@ -20,7 +19,8 @@ import StatusCodes from "http-status-codes";
 //     version
 // }
 
-const {OK, FORBIDDEN} = StatusCodes
+const OK = 200
+const FORBIDDEN = 403
 
 const NOT_ALLOWED = 'Not allowed!'
 
@@ -310,7 +310,7 @@ function request(opts, data) {
         //the whole response has been received
         response.on('end', () => {
           switch (response.statusCode) {
-            case 200:
+            case OK:
               resolve(body);
               break;
             default:
