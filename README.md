@@ -6,19 +6,19 @@ In your package.json:
 ```json
 {
     "dependencies": {
-        "oz": "github:StyraInc/styra-run-sdk-node#main"
+        "styra-run": "github:StyraInc/styra-run-sdk-node#main"
     }
 }
 ```
 
 On the command line:
 ```
-npm install oz
+npm install styra-run
 ```
 
 ## How to Use
 
-### Instantiate an Oz Client
+### Instantiate a Run Client
 
 ```javascript
 const options = {
