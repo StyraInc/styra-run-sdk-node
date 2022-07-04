@@ -118,7 +118,7 @@ const toInput = (item) => {
     return {note: item}
 }
 
-// The default predicate asserts the policy decission is equal to `{"result": true}`
+// The default predicate asserts the policy decision is equal to `{"result": true}`
 client.filter(list, DEFAULT_PREDICATE, 'foo/bar/allowed', list, toInput)
     .then((filteredList) => {
         // handle filtered list
