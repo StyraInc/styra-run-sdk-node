@@ -24,7 +24,7 @@ export class StyraRunNotAllowedError extends StyraRunError {
 export class StyraRunHttpError extends Error {
   constructor(message, statusCode, body) {
     super(message)
-    this.name = "HttpError"
+    this.name = "StyraRunHttpError"
     this.statusCode = statusCode
     this.body = body
   }
@@ -35,13 +35,38 @@ const FORBIDDEN = 403
 
 export const NOT_ALLOWED = 'Not allowed!'
 
+
 export class Client {
-  options
+  host
+  port
+  https
+  projectId
+  environmentId
+  userId
+  token
   namedCheckFunctions
 
-  constructor(options) {
-    this.options = options
+  constructor({host, port, https, projectId, environmentId, userId, token}) {
+    this.host = host ?? "api-test.styra.com"
+    this.port = port ?? 443
+    this.https = https ?? true
+    this.projectId = projectId
+    this.environmentId = environmentId
+    this.userId = userId
+    this.token = token
     this.namedCheckFunctions = {}
+  }
+
+  getConnectionOptions() {
+    return {
+      host: this.host,
+      port: this.port,
+      https: this.https
+    }
+  }
+
+  getPathPrefix() {
+    return `/v1/projects/${this.userId}/${this.projectId}/envs/${this.environmentId}`
   }
 
   /**
@@ -56,12 +81,12 @@ export class Client {
   check(path, input = undefined) {
     const query = input ? {input} : {}
     const reqOpts = {
-      ...this.options,
+      ...this.getConnectionOptions(),
       path: Path.join(this.getPathPrefix(), 'data', path),
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'authorization': `bearer ${this.options.token}`
+        'authorization': `bearer ${this.token}`
       }
     }
 
@@ -96,12 +121,12 @@ export class Client {
     }
 
     const reqOpts = {
-      ...this.options,
+      ...this.getConnectionOptions(),
       path: Path.join(this.getPathPrefix(), 'data_batch'),
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'authorization': `bearer ${this.options.token}`
+        'authorization': `bearer ${this.token}`
       }
     }
 
@@ -211,11 +236,11 @@ export class Client {
    */
   getData(path, def = undefined) {
     const reqOpts = {
-      ...this.options,
+      ...this.getConnectionOptions(),
       path: Path.join(this.getPathPrefix(), 'data', path),
       method: 'GET',
       headers: {
-        'authorization': `bearer ${this.options.token}`
+        'authorization': `bearer ${this.token}`
       }
     };
 
@@ -240,12 +265,12 @@ export class Client {
    */
   putData(path, data) {
     const reqOpts = {
-      ...this.options,
+      ...this.getConnectionOptions(),
       path: Path.join(this.getPathPrefix(), 'data', path),
       method: 'PUT',
       headers: {
         'content-type': 'application/json',
-        'authorization': `Bearer ${this.options.token}`
+        'authorization': `Bearer ${this.token}`
       }
     };
 
@@ -267,11 +292,11 @@ export class Client {
    */
   deleteData(path) {
     const reqOpts = {
-      ...this.options,
+      ...this.getConnectionOptions(),
       path: Path.join(this.getPathPrefix(), 'data', path),
       method: 'DELETE',
       headers: {
-        'authorization': `bearer ${this.options.token}`
+        'authorization': `bearer ${this.token}`
       }
     };
 
@@ -336,16 +361,8 @@ export class Client {
         checkResult = undefined
       }
 
-      if (checkResult?.result === undefined) {
-        return res.status(FORBIDDEN).end()
-      }
-
       return res.status(OK).json(checkResult).end()
     }
-  }
-
-  getPathPrefix() {
-    return `/v1/projects/${this.options.uid}/${this.options.pid}/envs/${this.options.eid}`
   }
 }
 
@@ -355,9 +372,9 @@ export class Client {
  * * `host`: (string) The `Styra Run` API host name
  * * `port`: (number) The `Styra Run` API port
  * * `https`: (boolean) Whether to use TLS for calls to the `Styra Run` API (default: true)
- * * `pid`: (string) Project ID
- * * `eid`: (string) Environment ID
- * * `uid`: (string) User ID
+ * * `projectId`: (string) Project ID
+ * * `environmentId`: (string) Environment ID
+ * * `userId`: (string) User ID
  * * `token`: (string) the API key (Bearer token) to use for calls to the `Styra Run` API
  *
  * @param options
