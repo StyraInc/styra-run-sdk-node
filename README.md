@@ -21,14 +21,17 @@ npm install styra-run
 ### Instantiate a Run Client
 
 ```javascript
+// Options are pulled from the environment
+import StyraRun from "styra-run"
+
 const options = {
-    host: 'app-test.styra.com',
-    port: 443,
-    https: true,
-    pid: 'proj1',
-    eid: 'env1',
-    uid: 'user1',
-    token: 'my_secret'
+  https: process.env.RUN_HTTPS
+  host: process.env.RUN_HOST,
+  port: process.env.RUN_PORT !== undefined ? parseInt(process.env.RUN_PORT) : undefined,
+  projectId: process.env.RUN_PROJECT,
+  environmentId: process.env.RUN_ENVIRONMENT,
+  userId: process.env.RUN_USER,
+  token: process.env.RUN_TOKEN
 }
 const client = StyraRun.New(options)
 ```
