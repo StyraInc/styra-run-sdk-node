@@ -388,10 +388,13 @@ describe("Allow", () => {
       const result = await client.allowed(path, input)
       fail(`Expected error, got: ${result}`)
     } catch (err) {
+      expect(err.name).toBe('StyraRunError')
       expect(err.message).toBe('Allow check failed')
       expect(err.path).toBe(path)
       expect(err.query).toEqual({input})
+      expect(err.cause?.name).toBe('StyraRunError')
       expect(err.cause?.message).toBe('Check failed')
+      expect(err.cause?.cause?.name).toBe('StyraRunHttpError')
       expect(err.cause?.cause?.message).toBe('Unexpected status code: 500')
       expect(err.cause?.cause?.statusCode).toBe(500)
       expect(err.cause?.cause?.body).toBe('some error happened')
