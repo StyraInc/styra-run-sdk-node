@@ -36,7 +36,7 @@ const FORBIDDEN = 403
 export const NOT_ALLOWED = 'Not allowed!'
 
 export function DEFAULT_PREDICATE(decision) {
-  return decission?.result === true
+  return decision?.result === true
 }
 
 export class Client {

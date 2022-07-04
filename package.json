@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "description": "The Styra Run node.js SDK",
   "type": "module",
-  "main": "./src/index.js",
+  "main": "./src/run-sdk.js",
   "scripts": {
     "test": "jasmine"
   },
