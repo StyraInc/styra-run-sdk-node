@@ -35,8 +35,8 @@ const FORBIDDEN = 403
 
 export const NOT_ALLOWED = 'Not allowed!'
 
-export function DEFAULT_PREDICATE(response) {
-  return response?.result === true
+export function DEFAULT_PREDICATE(decision) {
+  return decission?.result === true
 }
 
 export class Client {
@@ -95,8 +95,8 @@ export class Client {
 
     try {
       const json = toJson(query)
-      const response = await request(reqOpts, json)
-      return fromJson(response)
+      const decission = await request(reqOpts, json)
+      return fromJson(decission)
     } catch (err) {
       return await Promise.reject(new StyraRunError('Check failed', path, query, err))
     }
@@ -168,8 +168,8 @@ export class Client {
   async assert(path, input = undefined, predicate = DEFAULT_PREDICATE) {
     let result
     try {
-      const response = await this.check(path, input)
-      result = predicate(response)
+      const decission = await this.check(path, input)
+      result = predicate(decission)
     } catch (err) {
       throw new StyraRunError('Allow check failed', path, {input}, err)
     }
@@ -181,7 +181,7 @@ export class Client {
 
   /**
    * Convenience function that operates like {@link assert}, but returns a `Promise`, 
-   * that on a successful response resolves with `data`.
+   * that on a successful response resolves with `data` as its output.
    * 
    * ```js
    * const myData = ...

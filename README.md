@@ -56,30 +56,70 @@ client.check('foo/bar/allowed', input)
     })
 ```
 
-### Allow
+### Assert
+
+By default, the `assert()` function requires the policy decission to contain `{"result": true}`.
+
+```javascript
+const input = {...}
+client.assert('foo/bar/allowed', input)
+    .then(() => {
+        // Handle accept
+        ...
+    })
+    .catch((err) => {
+        // Handle error
+        ...
+    })
+```
+
+However, the default predicate can be overridden:
+
+```javascript
+const input = {...}
+// Predicate that requires the policy rule to return a dictionary containing a `{"role": "admin"}` entry.
+const myPredicate = (response) => {
+    return response?.result?.role === 'admin'
+}
+client.assert('foo/bar/allowed', input, myPredicate)
+    .then(() => {
+        // Handle accept
+        ...
+    })
+    .catch((err) => {
+        // Handle error
+        ...
+    })
+```
+
+Often, when asserting that something is allowed according to a policy, there is some piece of data that should be processed in following steps. There is a convenience function for this case:
 
 ```javascript
 const input = {...}
 const maybeAllowedObject = ...
-client.allowed('foo/bar/allowed', input, maybeAllowedObject)
+client.assertAndReturn(maybeAllowedObject, 'foo/bar/allowed', input)
     .then((allowedObject) => {
         // Do something with the allowed object
         ...
     })
     .catch((err) => {
-        // Handle rejection
+        // Handle error
         ...
     })
 ```
 
-### Filter
+### Filtering
 
 ```javascript
+import sdk, { DEFAULT_PREDICATE } from "run-sdk"
+
 const list = ["do", "re", "mi"]
 const toInput = (item) => {
     return {note: item}
 }
-client.filterAllowed('foo/bar/allowed', list, toInput)
+
+// The default predicate asserts the policy decission is equal to `{"result": true}`
+client.filter(list, DEFAULT_PREDICATE, 'foo/bar/allowed', list, toInput)
     .then((filteredList) => {
         // handle filtered list
         ...
