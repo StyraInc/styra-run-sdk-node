@@ -35,7 +35,6 @@ const FORBIDDEN = 403
 
 export const NOT_ALLOWED = 'Not allowed!'
 
-
 export class Client {
   host
   port
@@ -70,15 +69,15 @@ export class Client {
   }
 
   /**
-   * Makes an authorization check against a policy rule specified by `'path'`.
-   * Where `'path'` is the trailing component(s) of the full request path `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`
+   * Makes an authorization check against a policy rule specified by `path`.
+   * Where `path` is the trailing component(s) of the full request path `"/v1/projects/<USER_ID>/<PROJECT_ID>/envs/<ENVIRONMENT_ID>/data/<PATH>"`
    * Returns a `Promise` that on a successful response resolves to the response body dictionary: `{"result": ...}`.
    *
    * @param path the path to the policy rule to query
    * @param input the input document for the query
    * @returns {Promise<unknown>}
    */
-  check(path, input = undefined) {
+  async check(path, input = undefined) {
     const query = input ? {input} : {}
     const reqOpts = {
       ...this.getConnectionOptions(),
@@ -90,31 +89,32 @@ export class Client {
       }
     }
 
-    return toJson(query)
-      .then(query => request(reqOpts, query))
-      .then(fromJson)
-      .catch(err => {
-        return Promise.reject(new StyraRunError('Check failed', path, query, err))
-      });
+    try {
+      const json = toJson(query)
+      const response = await request(reqOpts, json)
+      return fromJson(response)
+    } catch (err) {
+      return await Promise.reject(new StyraRunError('Check failed', path, query, err))
+    }
   }
 
   /**
    * Makes a batched authorization check.
-   * The provided `'items'` is a list of dictionaries with the properties:
+   * The provided `items` is a list of dictionaries with the properties:
    * 
    * * `path`: the path to the policy rule to query for this entry
    * * `input`: (optional) the input document for this entry
    * 
-   * If, `'input'` is provided, it will be applied across all query items.
+   * If, `input` is provided, it will be applied across all query items.
    * 
    * Returns a list of result dictionaries; where each entry corresponds to an entry 
-   * with the same index in `'items'`.
+   * with the same index in `items`.
    * 
    * @param items the list of queries to batch
    * @param input the input document to apply to the entire batch request, or `undefined`
    * @returns a list of result dictionaries
    */
-  batchCheck(items, input = undefined) {
+  async batchCheck(items, input = undefined) {
     const query = {items}
     if (input) {
       query.input = input
@@ -130,48 +130,76 @@ export class Client {
       }
     }
 
-    return toJson(query)
-      .then(query => request(reqOpts, query))
-      // .then(fromJson)
-      .then((data) => {
-        return fromJson(data)
-      })
-      .catch(err => {
-        return Promise.reject(new StyraRunError('Batched check failed', undefined, query, err))
-      });
+    try {
+      const json = toJson(query)
+      const response = await request(reqOpts, json)
+      return fromJson(response)
+    } catch (err) {
+      return await Promise.reject(new StyraRunError('Batched check failed', undefined, query, err))
+    }
   }
 
   /**
-   * Makes an  authorization check against a policy rule wit a boolean return type, specified by `'path'`.
-   * Where `'path'` is the trailing component(s) of the full request path `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`
-   * Returns a `Promise`, that on a successful response resolves with no data, or `'data'`, if provided.
-   *
+   * Makes an authorization check against a policy rule specified by `path`.
+   * Where `path` is the trailing component(s) of the full request path 
+   * `"/v1/projects/<USER_ID>/<PROJECT_ID>/envs/<ENVIRONMENT_ID>/data/<PATH>"`
+   * 
+   * The provided `predicate` is a callback that takes the Styra Run check response 
+   * body as argument, and should return `true` if it sattisfies the authorization requirements, and `false` otherwise.
+   * 
+   * ```js
+   * const input = ...
+   * client.assert('example/allowed', input, (res) => {
+   *   res?.result === true
+   * })
+   *   .then(() => { ... })
+   *   .catch((err) => { ... })
+   * ```
+   * 
    * @param path the path to the policy rule to query
    * @param input the input document for the query
-   * @param data optional value to return on allowed
-   * @returns {Promise<unknown>}
+   * @param predicate a callback function, taking a response body dictionary as arg, returning true/false
+   * @returns 
    */
-  allowed(path, input = undefined, data = undefined) {
-    return new Promise((resolve, reject) => {
-      this.check(path, input)
-        .then((response) => {
-          if (response.result === true) {
-            if (data) {
-              return resolve(data)
-            }
-            return resolve()
-          }
-          reject(new StyraRunNotAllowedError(path, {input}))
-        })
-        .catch((err) => {
-          reject(new StyraRunError('Allow check failed', path, {input}, err))
-        })
-    })
+  async assert(path, input = undefined, predicate = defaultPredicate) {
+    let result
+    try {
+      const response = await this.check(path, input)
+      result = predicate(response)
+    } catch (err) {
+      throw new StyraRunError('Allow check failed', path, {input}, err)
+    }
+
+    if (!result) {
+      throw new StyraRunNotAllowedError(path, {input})
+    }
   }
 
   /**
-   * For each entry in the provided `'list'`, an authorization check against a policy rule wit a boolean return type, specified by `'path'` is made.
-   * Where `'path'` is the trailing component(s) of the full request path `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`
+   * Convenience function that operates like {@link assert}, but returns a `Promise`, 
+   * that on a successful response resolves with `data`.
+   * 
+   * ```js
+   * const myData = ...
+   * client.assertAndReturn(myData, 'example/allowed')
+   *   .then((allowedData) => { ... })
+   *   .catch((err) => { ... })
+   * ```
+   * 
+   * @param data optional value to return on asserted
+   * @param path the path to the policy rule to query
+   * @param input the input document for the query
+   * @param predicate a callback function, taking a response body dictionary as arg, returning true/false
+   * @see {@link assert}
+   */
+  async assertAndReturn(data, path, input = undefined, predicate = defaultPredicate) {
+    await this.assert(path, input, predicate)
+    return data
+  }
+
+  /**
+   * For each entry in the provided `list`, an authorization check against a policy rule wit a boolean return type, specified by `path` is made.
+   * Where `path` is the trailing component(s) of the full request path `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`
    * Returns a `Promise` that resolves to a filtered list.
    *
    * @param path the path to the policy rule to query
@@ -227,14 +255,14 @@ export class Client {
 
   /**
    * Fetch data from the `Styra Run` data API.
-   * Where `'path'` is the trailing component(s) of the full request path `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`
+   * Where `path` is the trailing component(s) of the full request path `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`
    * Returns a `Promise` that on a successful response resolves to the response body dictionary: `{"result": ...}`.
    *
    * @param path the path identifying the data to fetch
    * @param def the default value to return on a `404 Not Found` response
    * @returns {Promise<unknown>}
    */
-  getData(path, def = undefined) {
+  async getData(path, def = undefined) {
     const reqOpts = {
       ...this.getConnectionOptions(),
       path: Path.join(this.getPathPrefix(), 'data', path),
@@ -244,26 +272,27 @@ export class Client {
       }
     };
 
-    return request(reqOpts)
-      .then(fromJson)
-      .catch((err) => {
-        if (def && err.resp?.statusCode === 404) {
-          return {result: def}
-        }
-        return Promise.reject(new StyraRunError('GET data request failed', path, undefined, err))
-      });
+    try {
+      const response = await request(reqOpts)
+      return fromJson(response)
+    } catch (err) {
+      if (def && err.resp?.statusCode === 404) {
+        return { result: def }
+      }
+      return Promise.reject(new StyraRunError('GET data request failed', path, undefined, err))
+    }
   }
 
   /**
    * Upload data to the `Styra Run` data API.
-   * Where `'path'` is the trailing component(s) of the full request path `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`.
+   * Where `path` is the trailing component(s) of the full request path `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`.
    * Returns a `Promise` that on a successful response resolves to the response body dictionary: `{"version": ...}`.
    *
    * @param path the path identifying the data to upload
    * @param data the data to upload
    * @returns {Promise<unknown>}
    */
-  putData(path, data) {
+  async putData(path, data) {
     const reqOpts = {
       ...this.getConnectionOptions(),
       path: Path.join(this.getPathPrefix(), 'data', path),
@@ -274,23 +303,24 @@ export class Client {
       }
     };
 
-    return toJson(data)
-      .then((data) => request(reqOpts, data))
-      .then(fromJson)
-      .catch((err) => {
-        return Promise.reject(new StyraRunError('PUT data request failed', path, undefined, err))
-      });
+    try {
+      const json = toJson(data)
+      const response = await request(reqOpts, json)
+      return fromJson(response)
+    } catch (err) {
+      return await Promise.reject(new StyraRunError('PUT data request failed', path, undefined, err))
+    }
   }
 
   /**
    * Remove data from the `Styra Run` data API.
-   * Where `'path'` is the trailing component(s) of the full request path `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`
+   * Where `path` is the trailing component(s) of the full request path `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`
    * Returns a `Promise` that on a successful response resolves to the response body dictionary: `{"version": ...}`.
    *
    * @param path the path identifying the data to remove
    * @returns {Promise<unknown>}
    */
-  deleteData(path) {
+  async deleteData(path) {
     const reqOpts = {
       ...this.getConnectionOptions(),
       path: Path.join(this.getPathPrefix(), 'data', path),
@@ -300,11 +330,12 @@ export class Client {
       }
     };
 
-    return request(reqOpts)
-      .then(fromJson)
-      .catch(err => {
-        return Promise.reject(new StyraRunError('DELETE data request failed', path, undefined, err))
-      });
+    try {
+      const response = await request(reqOpts)
+      return fromJson(response)
+    } catch (err) {
+      return await Promise.reject(new StyraRunError('DELETE data request failed', path, undefined, err))
+    }
   }
 
   /**
@@ -425,7 +456,11 @@ function request(options, data) {
   });
 }
 
-async function toJson(data) {
+function defaultPredicate(response) {
+  return response?.result === true
+}
+
+function toJson(data) {
   const json = JSON.stringify(data);
   if (json) {
     return json
@@ -434,7 +469,7 @@ async function toJson(data) {
   }
 }
 
-async function fromJson(str) {
+function fromJson(str) {
   try {
     return JSON.parse(str)
   } catch (err) {

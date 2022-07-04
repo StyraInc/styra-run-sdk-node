@@ -324,7 +324,7 @@ describe("Allow", () => {
       body: {result: true}
     })
 
-    await expectAsync(client.allowed(path)).toBeResolved()
+    await expectAsync(client.assert(path)).toBeResolved()
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: {}
     }));
@@ -338,7 +338,7 @@ describe("Allow", () => {
       body: expectedResult
     })
 
-    await expectAsync(client.allowed(path, input)).toBeResolved()
+    await expectAsync(client.assert(path, input)).toBeResolved()
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: {input}
     }));
@@ -353,7 +353,7 @@ describe("Allow", () => {
       body: expectedResult
     })
 
-    await expectAsync(client.allowed(path, input, data))
+    await expectAsync(client.assertAndReturn(data, path, input))
       .toBeResolvedTo(data)
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: {input}
@@ -368,7 +368,7 @@ describe("Allow", () => {
       body: expectedResult
     })
 
-    await expectAsync(client.allowed(path, input))
+    await expectAsync(client.assert(path, input))
       .toBeRejectedWith(new StyraRunNotAllowedError(NOT_ALLOWED))
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: {input}
@@ -385,7 +385,7 @@ describe("Allow", () => {
 
     // Cannot use expectAsync().toBeRejectedWith(), as it doesn't allow us to assert error properties other than message
     try {
-      const result = await client.allowed(path, input)
+      const result = await client.assert(path, input)
       fail(`Expected error, got: ${result}`)
     } catch (err) {
       expect(err.name).toBe('StyraRunError')
