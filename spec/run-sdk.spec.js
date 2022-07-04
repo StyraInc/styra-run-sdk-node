@@ -1,5 +1,5 @@
 import serverSpy from "jasmine-http-server-spy"
-import sdk, { NOT_ALLOWED, StyraRunError, StyraRunNotAllowedError } from "../src/run-sdk.js"
+import sdk, { DEFAULT_PREDICATE, NOT_ALLOWED, StyraRunNotAllowedError } from "../src/run-sdk.js"
 
 describe("Check", () => {
   let httpSpy
@@ -448,7 +448,7 @@ describe("Filter allowed", () => {
     const list = []
     const expectedList = []
 
-    const result = await client.filterAllowed(list, path)
+    const result = await client.filter(list, DEFAULT_PREDICATE, path)
     expect(result).toEqual(expectedList)
   })
 
@@ -480,7 +480,7 @@ describe("Filter allowed", () => {
     const list = ['do', 're', 'mi', 'fa', 'so', 'la']
     const expectedList = ['do', 'so', 'la']
 
-    const result = await client.filterAllowed(list, path, toInput)
+    const result = await client.filter(list, DEFAULT_PREDICATE, path, toInput)
     expect(result).toEqual(expectedList)
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: expectedQuery
@@ -518,7 +518,7 @@ describe("Filter allowed", () => {
 
     const list = ['do', 're', 'mi', 'fa', 'so', 'la']
 
-    const result = await client.filterAllowed(list, path, undefined, toPath)
+    const result = await client.filter(list, DEFAULT_PREDICATE, path, undefined, toPath)
     expect(result).toEqual(list)
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: expectedQuery
@@ -533,7 +533,7 @@ describe("Filter allowed", () => {
     const list = ['do', 're', 'mi', 'fa', 'so', 'la']
 
     try {
-      const result = await client.filterAllowed(list, undefined, undefined, toPath)
+      const result = await client.filter(list, DEFAULT_PREDICATE, undefined, undefined, toPath)
       fail(`Expected error, got: ${result}`)
     } catch (err) {
       expect(err.message).toBe('Allow filtering failed')

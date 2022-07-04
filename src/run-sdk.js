@@ -35,6 +35,10 @@ const FORBIDDEN = 403
 
 export const NOT_ALLOWED = 'Not allowed!'
 
+export function DEFAULT_PREDICATE(response) {
+  return response?.result === true
+}
+
 export class Client {
   host
   port
@@ -161,7 +165,7 @@ export class Client {
    * @param predicate a callback function, taking a response body dictionary as arg, returning true/false
    * @returns 
    */
-  async assert(path, input = undefined, predicate = defaultPredicate) {
+  async assert(path, input = undefined, predicate = DEFAULT_PREDICATE) {
     let result
     try {
       const response = await this.check(path, input)
@@ -192,7 +196,7 @@ export class Client {
    * @param predicate a callback function, taking a response body dictionary as arg, returning true/false
    * @see {@link assert}
    */
-  async assertAndReturn(data, path, input = undefined, predicate = defaultPredicate) {
+  async assertAndReturn(data, path, input = undefined, predicate = DEFAULT_PREDICATE) {
     await this.assert(path, input, predicate)
     return data
   }
@@ -208,7 +212,7 @@ export class Client {
    * @param toPath optional, a callback that, given a list entry and an index, should return a `path` string. If provided, overrides the global `'path'` argument
    * @returns {Promise<Awaited<unknown>[]>}
    */
-  filterAllowed(list, path = undefined, toInput = undefined, toPath = undefined) {
+  async filter(list, predicate, path = undefined, toInput = undefined, toPath = undefined) {
     if (list.length === 0) {
       return Promise.resolve([])
     }
@@ -230,27 +234,25 @@ export class Client {
         return item
     }
 
-    return new Promise((resolve, reject) => {
-      try {
-        const items = list.map(transformer)
-        resolve(items)
-      } catch (err) {
-        reject(err)
-      }
-    })
-      .then((items) => this.batchCheck(items))
-      .then((response) => new Promise((resolve, reject) => {
-        const resultList = response.result ?? []
-        if (resultList.length !== list.length) {
-          reject(new StyraRunError(`Returned result list size (${resultList.length}) not equal to provided list size (${list.length})`, 
-            path, query, err))
-        }
-        const filtered = list.filter((_, i) => resultList[i]?.check?.result === true)
-        resolve(filtered)
-      }))
-      .catch(err => {
-        return Promise.reject(new StyraRunError('Allow filtering failed', path, undefined, err))
-      });
+    let resultList
+    try {
+      const items = list.map(transformer)
+      const batchResult = await this.batchCheck(items)
+      resultList = batchResult.result ?? []
+    } catch (err) {
+      throw new StyraRunError('Allow filtering failed', path, undefined, err)
+    }
+
+    if (resultList.length !== list.length) {
+      throw new StyraRunError(`Returned result list size (${resultList.length}) not equal to provided list size (${list.length})`, 
+        path, query, err)
+    }
+
+    try {
+      return list.filter((_, i) => predicate(resultList[i]?.check))
+    } catch (err) {
+      throw new StyraRunError('Allow filtering failed', path, undefined, err)
+    }
   }
 
   /**
@@ -454,10 +456,6 @@ function request(options, data) {
       }))
     }
   });
-}
-
-function defaultPredicate(response) {
-  return response?.result === true
 }
 
 function toJson(data) {
