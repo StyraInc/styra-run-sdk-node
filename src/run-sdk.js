@@ -4,6 +4,13 @@ import Path from "path"
 
 // TODO: Add support for versioning/ETags for data API requests
 
+/**
+ * @module StyraRun
+ */
+
+/**
+ * General Styra Run Client {@link Error}.
+ */
 export class StyraRunError extends Error {
   constructor(message, path = undefined, query = undefined, cause = undefined) {
     super(message)
@@ -14,13 +21,19 @@ export class StyraRunError extends Error {
   }
 }
 
-export class StyraRunNotAllowedError extends StyraRunError {
+/**
+ * Error for when the {@link Client#assert} {@link AssertPredicate `predicate`} rejects a policy decision.
+ */
+export class StyraRunAssertionError extends StyraRunError {
   constructor(path = undefined, query = undefined) {
     super(NOT_ALLOWED, path, query)
-    this.name = "StyraRunNotAllowedError"
+    this.name = "StyraRunAssertionError"
   }
 }
 
+/**
+ * Styra Run Client HTTP {@link Error}.
+ */
 export class StyraRunHttpError extends Error {
   constructor(message, statusCode, body) {
     super(message)
@@ -39,6 +52,9 @@ export function DEFAULT_PREDICATE(decision) {
   return decision?.result === true
 }
 
+/**
+ * A client for communicating with the Styra Run API.
+ */
 export class Client {
   host
   port
@@ -73,13 +89,20 @@ export class Client {
   }
 
   /**
+   * @typedef {{result: unknown}|{}} CheckResult
+   */
+  /**
    * Makes an authorization check against a policy rule specified by `path`.
    * Where `path` is the trailing component(s) of the full request path `"/v1/projects/<USER_ID>/<PROJECT_ID>/envs/<ENVIRONMENT_ID>/data/<PATH>"`
-   * Returns a `Promise` that on a successful response resolves to the response body dictionary: `{"result": ...}`.
+   * 
+   * Returns a `Promise` that on a successful Styra Run API response resolves to the response body dictionary, e.g.: `{"result": ...}`.
+   * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
+   * 
+   * {@link LoadResultPromise}
    *
    * @param path the path to the policy rule to query
    * @param input the input document for the query
-   * @returns {Promise<unknown>}
+   * @returns {Promise<CheckResult,StyraRunError>}
    */
   async check(path, input = undefined) {
     const query = input ? {input} : {}
@@ -102,6 +125,13 @@ export class Client {
     }
   }
 
+
+  /**
+   * @typedef {{check: CheckResult}} BatchCheckItemResult
+   */
+  /**
+   * @typedef {{result: BatchCheckItemResult[]}} BatchCheckResult
+   */
   /**
    * Makes a batched authorization check.
    * The provided `items` is a list of dictionaries with the properties:
@@ -111,12 +141,13 @@ export class Client {
    * 
    * If, `input` is provided, it will be applied across all query items.
    * 
-   * Returns a list of result dictionaries; where each entry corresponds to an entry 
+   * Returns a `Promise` that is resolved to a list of result dictionaries, where each entry corresponds to an entry 
    * with the same index in `items`.
+   * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
    * 
    * @param items the list of queries to batch
    * @param input the input document to apply to the entire batch request, or `undefined`
-   * @returns a list of result dictionaries
+   * @returns {Promise<BatchCheckResult, StyraRunError>} a list of result dictionaries
    */
   async batchCheck(items, input = undefined) {
     const query = {items}
@@ -144,6 +175,11 @@ export class Client {
   }
 
   /**
+   * @callback AssertPredicate
+   * @param {CheckResult} decision
+   * @returns {Boolean} `true` is `decision` is valide, `false` otherwise
+   */
+  /**
    * Makes an authorization check against a policy rule specified by `path`.
    * Where `path` is the trailing component(s) of the full request path 
    * `"/v1/projects/<USER_ID>/<PROJECT_ID>/envs/<ENVIRONMENT_ID>/data/<PATH>"`
@@ -160,10 +196,14 @@ export class Client {
    *   .catch((err) => { ... })
    * ```
    * 
+   * Returns a `Promise` that resolves with no value, and rejected with a {@link StyraRunError}.
+   * If the policy decision is rejected by the provided `predicate`, the returned `Promise` is rejected with a {@link StyraRunAssertionError}.
+   * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
+   * 
    * @param path the path to the policy rule to query
    * @param input the input document for the query
    * @param predicate a callback function, taking a response body dictionary as arg, returning true/false
-   * @returns 
+   * @returns {Promise<undefined, StyraRunError|StyraRunAssertionError>}
    */
   async assert(path, input = undefined, predicate = DEFAULT_PREDICATE) {
     let result
@@ -175,7 +215,7 @@ export class Client {
     }
 
     if (!result) {
-      throw new StyraRunNotAllowedError(path, {input})
+      throw new StyraRunAssertionError(path, {input})
     }
   }
 
@@ -194,6 +234,7 @@ export class Client {
    * @param path the path to the policy rule to query
    * @param input the input document for the query
    * @param predicate a callback function, taking a response body dictionary as arg, returning true/false
+   * @returns {Promise<unknown, StyraRunError>}
    * @see {@link assert}
    */
   async assertAndReturn(data, path, input = undefined, predicate = DEFAULT_PREDICATE) {
@@ -204,13 +245,15 @@ export class Client {
   /**
    * For each entry in the provided `list`, an authorization check against a policy rule wit a boolean return type, specified by `path` is made.
    * Where `path` is the trailing component(s) of the full request path `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`
-   * Returns a `Promise` that resolves to a filtered list.
+   *
+   * Returns a `Promise` that resolves to a filtered version of the provided `list`.
+   * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
    *
    * @param path the path to the policy rule to query
    * @param list the list to filter
    * @param toInput optional, a callback that, given a list entry and an index, should return an `input` document
    * @param toPath optional, a callback that, given a list entry and an index, should return a `path` string. If provided, overrides the global `'path'` argument
-   * @returns {Promise<Awaited<unknown>[]>}
+   * @returns {Promise<any[], StyraRunError>}
    */
   async filter(list, predicate, path = undefined, toInput = undefined, toPath = undefined) {
     if (list.length === 0) {
@@ -256,13 +299,18 @@ export class Client {
   }
 
   /**
+   * @typedef {{result: unknown}} DataResult
+   */
+  /**
    * Fetch data from the `Styra Run` data API.
    * Where `path` is the trailing component(s) of the full request path `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`
-   * Returns a `Promise` that on a successful response resolves to the response body dictionary: `{"result": ...}`.
+   *
+   * Returns a `Promise` that on a successful response resolves to the {@link DataResult response body dictionary}: `{"result": ...}`.
+   * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
    *
    * @param path the path identifying the data to fetch
    * @param def the default value to return on a `404 Not Found` response
-   * @returns {Promise<unknown>}
+   * @returns {Promise<DataResult, StyraRunError>}
    */
   async getData(path, def = undefined) {
     const reqOpts = {
@@ -286,13 +334,20 @@ export class Client {
   }
 
   /**
+   * A Styra Run API response containing the `version` of the updated data.
+   *
+   * @typedef {{version: number}} DataUpdateResult
+   */
+  /**
    * Upload data to the `Styra Run` data API.
    * Where `path` is the trailing component(s) of the full request path `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`.
-   * Returns a `Promise` that on a successful response resolves to the response body dictionary: `{"version": ...}`.
+   *
+   * Returns a `Promise` that on a successful response resolves to the Styra Run API {@link DataUpdateResult response body dictionary}: `{"version": ...}`.
+   * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
    *
    * @param path the path identifying the data to upload
    * @param data the data to upload
-   * @returns {Promise<unknown>}
+   * @returns {Promise<DataUpdateResult, StyraRunError>}
    */
   async putData(path, data) {
     const reqOpts = {
@@ -317,10 +372,12 @@ export class Client {
   /**
    * Remove data from the `Styra Run` data API.
    * Where `path` is the trailing component(s) of the full request path `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`
-   * Returns a `Promise` that on a successful response resolves to the response body dictionary: `{"version": ...}`.
+   *
+   * Returns a `Promise` that on a successful response resolves to the Styra Run API {@link DataUpdateResult response body dictionary}: `{"version": ...}`.
+   * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
    *
    * @param path the path identifying the data to remove
-   * @returns {Promise<unknown>}
+   * @returns {Promise<DataUpdateResult, StyraRunError>}
    */
   async deleteData(path) {
     const reqOpts = {
@@ -341,9 +398,17 @@ export class Client {
   }
 
   /**
+   * A callback function
+   *
+   * @callback NamedCheckCallback
+   * @param {Client} client a reference to this {@link Client} instance
+   * @param {Object} input the incoming `input` document
+   * @returns {Promise<unknown>}
+   */
+  /**
    * Register a named check function.
    *
-   * @param name the name of the check function
+   * @param {NamedCheckCallback} name the name of the check function
    * @param onCheck callback returning a `Promise` resolving to the check result body
    */
   registerNamedCheck(name, onCheck) {
@@ -351,8 +416,10 @@ export class Client {
   }
 
   /**
-   * Calls a named check function, if found.
-   * Returns a `Promise`, resolving to the check result body.
+   * Calls a {@link NamedCheckCallback named check function}, if found.
+   *
+   * Returns a `Promise`, resolving to the result of calling the named function.
+   * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
    *
    * @param name the name of the check function
    * @param input the input document to pass to the check function
@@ -362,7 +429,11 @@ export class Client {
     const namedCheck = this.namedCheckFunctions[name]
 
     if (namedCheck) {
-      return await namedCheck(this, input)
+      try {
+        return await namedCheck(this, input)
+      } catch (err) {
+        throw new StyraRunError(`Named check function '${name}' failed`, undefined, err)
+      }
     }
 
     throw new StyraRunError(`Named check function '${name}' not found`)
@@ -372,7 +443,7 @@ export class Client {
    * Returns an HTTP proxy function
    *
    * @param onProxy
-   * @returns {(function(*, *): Promise<*>)|*}
+   * @returns {(Function(*, *): Promise)}
    */
   proxy(onProxy = undefined) {
     return async (req, res) => {
@@ -394,7 +465,7 @@ export class Client {
         checkResult = undefined
       }
 
-      return res.status(OK).json(checkResult).end()
+      res.status(OK).json(checkResult).end()
     }
   }
 }
