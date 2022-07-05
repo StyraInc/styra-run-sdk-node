@@ -1,5 +1,7 @@
+import http from "node:http"
 import serverSpy from "jasmine-http-server-spy"
-import sdk, { DEFAULT_PREDICATE, NOT_ALLOWED, StyraRunNotAllowedError } from "../src/run-sdk.js"
+import { resolve } from "path"
+import sdk, { DEFAULT_PREDICATE, NOT_ALLOWED, StyraRunAssertionError } from "../src/run-sdk.js"
 
 describe("Check", () => {
   let httpSpy
@@ -369,7 +371,7 @@ describe("Allow", () => {
     })
 
     await expectAsync(client.assert(path, input))
-      .toBeRejectedWith(new StyraRunNotAllowedError(NOT_ALLOWED))
+      .toBeRejectedWith(new StyraRunAssertionError(NOT_ALLOWED))
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: {input}
     }));
@@ -545,3 +547,229 @@ describe("Filter allowed", () => {
     }
   })
 })
+
+describe("Proxy", () => {
+  let httpSpy
+
+  const port = 8082
+  const path = 'foo/allowed'
+  const input = {foo: "bar"}
+  const sdkClient = sdk.New({
+    uid: "user1",
+    pid: "proj1",
+    eid: "env1",
+    port: port,
+    host: "localhost",
+    https: false
+  })
+
+  beforeAll(function(done) {
+    httpSpy = serverSpy.createSpyObj('mockServer', [{
+        method: 'post',
+        url: `${sdkClient.getPathPrefix()}/data/${path}`,
+        handlerName: 'getMockedUrl'
+      }
+    ])
+    httpSpy.server.start(8082, done)
+  })
+  
+  afterAll(function(done) {
+    httpSpy.server.stop(done)
+  })
+
+  afterEach(function() {
+    httpSpy.getMockedUrl.calls.reset();
+  })
+
+  it("Success, no callback", async () => {
+    const expectedResult = {
+      result: true
+    }
+    httpSpy.getMockedUrl.and.returnValue({
+      statusCode: 200,
+      body: expectedResult
+    })
+
+    const server = http.createServer();
+    server.addListener('request', sdkClient.proxy())
+
+    await withServer(server, 8081, async () => {
+      const {response, body} = await clientRequest(8081, 'POST', '/proxy', JSON.stringify({
+        path,
+        input
+      }))
+
+      expect(response.statusCode).toBe(200)
+      expect(body).toBe(JSON.stringify(expectedResult))
+      expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
+        body: {input}
+      }));
+    })
+  })
+
+  it("Success, with callback", async () => {
+    const expectedResult = {
+      result: true
+    }
+    httpSpy.getMockedUrl.and.returnValue({
+      statusCode: 200,
+      body: expectedResult
+    })
+
+    const proxyCallback = async (req, res, input) => {
+      return {
+        ...input,
+        pr: 'oxy'
+      }
+    }
+
+    const server = http.createServer();
+    server.addListener('request', sdkClient.proxy(proxyCallback))
+
+    await withServer(server, 8081, async () => {
+      const {response, body} = await clientRequest(8081, 'POST', '/proxy', JSON.stringify({
+        path,
+        input
+      }))
+
+      expect(response.statusCode).toBe(200)
+      expect(body).toBe(JSON.stringify(expectedResult))
+      expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
+        body: {
+          input: {
+            ...input,
+            pr: 'oxy'
+          }
+        }
+      }));
+    })
+  })
+
+  it("Success, with callback throwing exception", async () => {
+    const proxyCallback = async (req, res, input) => {
+      throw Error("FOO BAR")
+    }
+
+    const server = http.createServer();
+    server.addListener('request', sdkClient.proxy(proxyCallback))
+
+    await withServer(server, 8081, async () => {
+      const {response, body} = await clientRequest(8081, 'POST', '/proxy', JSON.stringify({
+        path,
+        input
+      }))
+
+      expect(response.statusCode).toBe(500)
+      expect(body).toBe('policy check failed')
+    })
+  })
+
+  it("Success, rejected", async () => {
+    const expectedResult = {}
+    httpSpy.getMockedUrl.and.returnValue({
+      statusCode: 200,
+      body: expectedResult
+    })
+
+    const server = http.createServer();
+    server.addListener('request', sdkClient.proxy())
+
+    await withServer(server, 8081, async () => {
+      const {response, body} = await clientRequest(8081, 'POST', '/proxy', JSON.stringify({
+        path,
+        input
+      }))
+
+      expect(response.statusCode).toBe(200)
+      expect(body).toBe(JSON.stringify(expectedResult))
+      expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
+        body: {input}
+      }));
+    })
+  })
+
+  it("Success, back-end failure", async () => {
+    httpSpy.getMockedUrl.and.returnValue({
+      statusCode: 400,
+      body: 'ERROR'
+    })
+
+    const server = http.createServer();
+    server.addListener('request', sdkClient.proxy())
+
+    await withServer(server, 8081, async () => {
+      const {response, body} = await clientRequest(8081, 'POST', '/proxy', JSON.stringify({
+        path,
+        input
+      }))
+      expect(response.statusCode).toBe(500)
+      expect(body).toBe('policy check failed')
+      expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
+        body: {input}
+      }));
+    })
+  })
+})
+
+function clientRequest(port, method, path, data = undefined) {
+  const options = {
+    port,
+    path,
+    method,
+    host: 'localhost'
+  }
+
+  return new Promise((resolve, reject) => {
+    const req = http.request(options, (response) => {
+      let body = ''
+
+      //another chunk of data has been received
+      response.on('data', (chunk) => {
+        body += chunk
+      })
+
+      //the whole response has been received
+      response.on('end', () => {
+        resolve({response, body})
+      })
+    }).on('error', (err) => {
+      reject(new Error('Failed to send request', {
+        cause: err
+      }))
+    });
+    if (data) {
+      req.write(data)
+    }
+    req.end()
+  })
+}
+
+async function withServer(server, port, callback) {
+  await startServer(server, port)
+  await callback(server)
+  await closeServer(server)
+}
+
+async function startServer(server, port) {
+  await new Promise((resolve, reject) => {
+    server.listen(8081, (err) => {
+      if (err) {
+        reject(err)
+      } else {
+        resolve()
+      }
+    })
+  })
+}
+
+async function closeServer(server) {
+  await new Promise((resolve, reject) => {
+    server.close((err) => {
+      if (err) {
+        reject(err)
+      } else {
+        resolve()
+      }
+    })
+  })
+}

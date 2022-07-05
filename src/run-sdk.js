@@ -446,28 +446,59 @@ export class Client {
    * @returns {(Function(*, *): Promise)}
    */
   proxy(onProxy = undefined) {
-    return async (req, res) => {
-      const {check: checkName, path: path} = req.body
-
-      let input = req.body.input ?? {}
-      if (onProxy) {
-        input = await onProxy(req, res, input)
+    return async (request, response) => {
+      if (request.method !== 'POST') {
+        response.writeHead(405, {'Content-Type': 'text/html'})
+        response.end('Method Not Allowed!')
+        return
       }
 
-      let checkResult;
+      const body = await getBody(request)
+      const json = fromJson(body)
+
+      const checkName = json.check
+      const path = json.path
+
+      if (checkName === undefined && path === undefined) {
+        response.writeHead(400, {'Content-Type': 'text/html'})
+        response.end('check or path required')
+        return
+      }
+      
       try {
+        let input = json?.input ?? {}
+        if (onProxy) {
+          input = await onProxy(request, response, input)
+        }
+
+        let checkResult
         if (checkName) {
           checkResult = await this.callNamedCheck(checkName, input)
         } else {
           checkResult = await this.check(path, input)
         }
-      } catch (e) {
-        checkResult = undefined
-      }
+        const result = toJson(checkResult)
 
-      res.status(OK).json(checkResult).end()
+        response.writeHead(200, {'Content-Type': 'application/json'})
+          .end(result)
+      } catch (e) {
+        response.writeHead(500, {'Content-Type': 'text/html'})
+        response.end('policy check failed')
+      }
     }
   }
+}
+
+function getBody(stream) {
+  return new Promise((resolve) => {
+    var body = ''
+    stream.on('data', (data) => {
+      body += data
+    })
+    stream.on('end', () => {
+      resolve(body)
+    })
+  })
 }
 
 /**
@@ -493,30 +524,21 @@ function request(options, data) {
   return new Promise((resolve, reject) => {
     try {
       const client = options.https === false ? Http : Https
-      const req = client.request(options, (response) => {
-        let body = '';
-
-        //another chunk of data has been received
-        response.on('data', (chunk) => {
-          body += chunk;
-        });
-
-        //the whole response has been received
-        response.on('end', () => {
-          switch (response.statusCode) {
-            case OK:
-              resolve(body);
-              break;
-            default:
-              reject(new StyraRunHttpError(`Unexpected status code: ${response.statusCode}`, 
-                response.statusCode, body));
-          }
-        });
+      const req = client.request(options, async (response) => {
+        let body = await getBody(response);
+        switch (response.statusCode) {
+          case OK:
+            resolve(body);
+            break;
+          default:
+            reject(new StyraRunHttpError(`Unexpected status code: ${response.statusCode}`, 
+              response.statusCode, body));
+        }
       }).on('error', (err) => {
         reject(new Error('Failed to send request', {
           cause: err
         }))
-      });
+      })
       if (data) {
         req.write(data);
       }
@@ -526,7 +548,7 @@ function request(options, data) {
         cause: err
       }))
     }
-  });
+  })
 }
 
 function toJson(data) {
