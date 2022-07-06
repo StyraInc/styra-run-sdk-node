@@ -124,7 +124,7 @@ export class Client {
   }
 
   /**
-   * Fetch data from the Oz data API.
+   * Fetch data from the `Styra Run` data API.
    * Where `'path'` is the trailing component(s) of the full request path `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`
    * Returns a `Promise` that on a successful response resolves to the response body dictionary: `{"result": ...}`.
    *
@@ -154,7 +154,7 @@ export class Client {
   }
 
   /**
-   * Upload data to the Oz data API.
+   * Upload data to the `Styra Run` data API.
    * Where `'path'` is the trailing component(s) of the full request path `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`.
    * Returns a `Promise` that on a successful response resolves to the response body dictionary: `{"version": ...}`.
    *
@@ -183,7 +183,7 @@ export class Client {
   }
 
   /**
-   * Remove data from the Oz data API.
+   * Remove data from the `Styra Run` data API.
    * Where `'path'` is the trailing component(s) of the full request path `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`
    * Returns a `Promise` that on a successful response resolves to the response body dictionary: `{"version": ...}`.
    *
@@ -277,15 +277,15 @@ export class Client {
 }
 
 /**
- * Construct a new Oz Client from the passed `options` dictionary.
+ * Construct a new `Styra Run` Client from the passed `options` dictionary.
  * Valid options are:
- * * `host`: (string) The Oz API host name
- * * `port`: (number) The Oz API port
- * * `https`: (boolean) Whether to use TLS for calls to the Oz API (default: true)
+ * * `host`: (string) The `Styra Run` API host name
+ * * `port`: (number) The `Styra Run` API port
+ * * `https`: (boolean) Whether to use TLS for calls to the `Styra Run` API (default: true)
  * * `pid`: (string) Project ID
  * * `eid`: (string) Environment ID
  * * `uid`: (string) User ID
- * * `token`: (string) the API key (Bearer token) to use for calls to the Oz API
+ * * `token`: (string) the API key (Bearer token) to use for calls to the `Styra Run` API
  *
  * @param options
  * @returns {Client}
