@@ -94,10 +94,10 @@ export class Client {
   /**
    * Makes an authorization check against a policy rule specified by `path`.
    * Where `path` is the trailing component(s) of the full request path `"/v1/projects/<USER_ID>/<PROJECT_ID>/envs/<ENVIRONMENT_ID>/data/<PATH>"`
-   * 
+   *
    * Returns a `Promise` that on a successful Styra Run API response resolves to the response body dictionary, e.g.: `{"result": ...}`.
    * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
-   * 
+   *
    * {@link LoadResultPromise}
    *
    * @param path the path to the policy rule to query
@@ -135,16 +135,16 @@ export class Client {
   /**
    * Makes a batched authorization check.
    * The provided `items` is a list of dictionaries with the properties:
-   * 
+   *
    * * `path`: the path to the policy rule to query for this entry
    * * `input`: (optional) the input document for this entry
-   * 
+   *
    * If, `input` is provided, it will be applied across all query items.
-   * 
-   * Returns a `Promise` that is resolved to a list of result dictionaries, where each entry corresponds to an entry 
+   *
+   * Returns a `Promise` that is resolved to a list of result dictionaries, where each entry corresponds to an entry
    * with the same index in `items`.
    * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
-   * 
+   *
    * @param items the list of queries to batch
    * @param input the input document to apply to the entire batch request, or `undefined`
    * @returns {Promise<BatchCheckResult, StyraRunError>} a list of result dictionaries
@@ -181,12 +181,12 @@ export class Client {
    */
   /**
    * Makes an authorization check against a policy rule specified by `path`.
-   * Where `path` is the trailing component(s) of the full request path 
+   * Where `path` is the trailing component(s) of the full request path
    * `"/v1/projects/<USER_ID>/<PROJECT_ID>/envs/<ENVIRONMENT_ID>/data/<PATH>"`
-   * 
-   * The provided `predicate` is a callback that takes the Styra Run check response 
+   *
+   * The provided `predicate` is a callback that takes the Styra Run check response
    * body as argument, and should return `true` if it sattisfies the authorization requirements, and `false` otherwise.
-   * 
+   *
    * ```js
    * const input = ...
    * client.assert('example/allowed', input, (res) => {
@@ -195,11 +195,11 @@ export class Client {
    *   .then(() => { ... })
    *   .catch((err) => { ... })
    * ```
-   * 
+   *
    * Returns a `Promise` that resolves with no value, and rejected with a {@link StyraRunError}.
    * If the policy decision is rejected by the provided `predicate`, the returned `Promise` is rejected with a {@link StyraRunAssertionError}.
    * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
-   * 
+   *
    * @param path the path to the policy rule to query
    * @param input the input document for the query
    * @param predicate a callback function, taking a response body dictionary as arg, returning true/false
@@ -220,16 +220,16 @@ export class Client {
   }
 
   /**
-   * Convenience function that operates like {@link assert}, but returns a `Promise`, 
+   * Convenience function that operates like {@link assert}, but returns a `Promise`,
    * that on a successful response resolves with `data` as its output.
-   * 
+   *
    * ```js
    * const myData = ...
    * client.assertAndReturn(myData, 'example/allowed')
    *   .then((allowedData) => { ... })
    *   .catch((err) => { ... })
    * ```
-   * 
+   *
    * @param data optional value to return on asserted
    * @param path the path to the policy rule to query
    * @param input the input document for the query
@@ -261,20 +261,20 @@ export class Client {
     }
 
     const transformer = (entry, i) => {
-        const item = {}
-  
-        const itemInput = toInput ? toInput(entry, i) : undefined
-        if (itemInput) {
-          item.input = itemInput
-        }
-  
-        const itemPath = toPath ? toPath(entry, i) : undefined
-        item.path = itemPath ?? path
-        if (item.path === undefined) {
-          throw new StyraRunError(`No 'path' provided for list entry at ${i}`)
-        }
-  
-        return item
+      const item = {}
+
+      const itemInput = toInput ? toInput(entry, i) : undefined
+      if (itemInput) {
+        item.input = itemInput
+      }
+
+      const itemPath = toPath ? toPath(entry, i) : undefined
+      item.path = itemPath ?? path
+      if (item.path === undefined) {
+        throw new StyraRunError(`No 'path' provided for list entry at ${i}`)
+      }
+
+      return item
     }
 
     let resultList
@@ -287,7 +287,7 @@ export class Client {
     }
 
     if (resultList.length !== list.length) {
-      throw new StyraRunError(`Returned result list size (${resultList.length}) not equal to provided list size (${list.length})`, 
+      throw new StyraRunError(`Returned result list size (${resultList.length}) not equal to provided list size (${list.length})`,
         path, query, err)
     }
 
@@ -327,7 +327,7 @@ export class Client {
       return fromJson(response)
     } catch (err) {
       if (def && err.resp?.statusCode === 404) {
-        return { result: def }
+        return {result: def}
       }
       return Promise.reject(new StyraRunError('GET data request failed', path, undefined, err))
     }
@@ -447,25 +447,25 @@ export class Client {
    */
   proxy(onProxy = undefined) {
     return async (request, response) => {
-      if (request.method !== 'POST') {
-        response.writeHead(405, {'Content-Type': 'text/html'})
-        response.end('Method Not Allowed!')
-        return
-      }
-
-      const body = await getBody(request)
-      const json = fromJson(body)
-
-      const checkName = json.check
-      const path = json.path
-
-      if (checkName === undefined && path === undefined) {
-        response.writeHead(400, {'Content-Type': 'text/html'})
-        response.end('check or path required')
-        return
-      }
-      
       try {
+        if (request.method !== 'POST') {
+          response.writeHead(405, {'Content-Type': 'text/html'})
+          response.end('Method Not Allowed!')
+          return
+        }
+
+        const body = await getBody(request)
+        const json = fromJson(body)
+
+        const checkName = json?.check
+        const path = json?.path
+
+        if (checkName === undefined && path === undefined) {
+          response.writeHead(400, {'Content-Type': 'text/html'})
+          response.end('check or path required')
+          return
+        }
+
         let input = json?.input ?? {}
         if (onProxy) {
           input = await onProxy(request, response, input)
@@ -490,14 +490,19 @@ export class Client {
 }
 
 function getBody(stream) {
-  return new Promise((resolve) => {
-    var body = ''
-    stream.on('data', (data) => {
-      body += data
-    })
-    stream.on('end', () => {
-      resolve(body)
-    })
+  return new Promise((resolve, reject) => {
+    if (stream.body) {
+      // express compatibility
+      resolve(stream.body)
+    } else {
+      var body = ''
+      stream.on('data', (data) => {
+        body += data
+      })
+      stream.on('end', () => {
+        resolve(body)
+      })
+    }
   })
 }
 
@@ -531,7 +536,7 @@ function request(options, data) {
             resolve(body);
             break;
           default:
-            reject(new StyraRunHttpError(`Unexpected status code: ${response.statusCode}`, 
+            reject(new StyraRunHttpError(`Unexpected status code: ${response.statusCode}`,
               response.statusCode, body));
         }
       }).on('error', (err) => {
@@ -560,11 +565,14 @@ function toJson(data) {
   }
 }
 
-function fromJson(str) {
+function fromJson(val) {
+  if (typeof val === 'object') {
+    return val
+  }
   try {
-    return JSON.parse(str)
+    return JSON.parse(val)
   } catch (err) {
-    throw new Error('Invalid JSON in response', {cause: err})
+    throw new Error('Invalid JSON', {cause: err})
   }
 }
 
