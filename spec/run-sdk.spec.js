@@ -326,6 +326,7 @@ describe("Allow", () => {
       body: {result: true}
     })
 
+
     await expectAsync(client.assert(path)).toBeResolved()
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: {}

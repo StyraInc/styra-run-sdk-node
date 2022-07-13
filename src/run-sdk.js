@@ -487,6 +487,10 @@ export class Client {
       }
     }
   }
+
+  getPathPrefix() {
+    return `/v1/projects/${this.options.uid}/${this.options.pid}/envs/${this.options.eid}`
+  }
 }
 
 function getBody(stream) {
