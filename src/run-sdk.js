@@ -3,6 +3,7 @@ import Https from "https"
 import Path from "path"
 
 // TODO: Add support for versioning/ETags for data API requests
+// TODO: Add support for fail-over/retry when server connection is broken
 
 /**
  * @module StyraRun
@@ -63,7 +64,7 @@ export class Client {
   environmentId
   userId
   token
-  namedCheckFunctions
+  inputTransformers
 
   constructor({host, port, https, projectId, environmentId, userId, token}) {
     this.host = host ?? "api-test.styra.com"
@@ -73,7 +74,7 @@ export class Client {
     this.environmentId = environmentId
     this.userId = userId
     this.token = token
-    this.namedCheckFunctions = {}
+    this.inputTransformers = {}
   }
 
   getConnectionOptions() {
@@ -86,6 +87,10 @@ export class Client {
 
   getPathPrefix() {
     return `/v1/projects/${this.userId}/${this.projectId}/envs/${this.environmentId}`
+  }
+
+  setInputTransformer(path, transformer) {
+    this.inputTransformers[path] = transformer
   }
 
   /**
@@ -129,6 +134,7 @@ export class Client {
   /**
    * @typedef {{check: CheckResult}} BatchCheckItemResult
    */
+
   /**
    * @typedef {{result: BatchCheckItemResult[]}} BatchCheckResult
    */
@@ -398,54 +404,12 @@ export class Client {
   }
 
   /**
-   * A callback function
-   *
-   * @callback NamedCheckCallback
-   * @param {Client} client a reference to this {@link Client} instance
-   * @param {Object} input the incoming `input` document
-   * @returns {Promise<unknown>}
-   */
-  /**
-   * Register a named check function.
-   *
-   * @param {NamedCheckCallback} name the name of the check function
-   * @param onCheck callback returning a `Promise` resolving to the check result body
-   */
-  registerNamedCheck(name, onCheck) {
-    this.namedCheckFunctions[name] = onCheck
-  }
-
-  /**
-   * Calls a {@link NamedCheckCallback named check function}, if found.
-   *
-   * Returns a `Promise`, resolving to the result of calling the named function.
-   * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
-   *
-   * @param name the name of the check function
-   * @param input the input document to pass to the check function
-   * @returns {Promise<*>}
-   */
-  async callNamedCheck(name, input) {
-    const namedCheck = this.namedCheckFunctions[name]
-
-    if (namedCheck) {
-      try {
-        return await namedCheck(this, input)
-      } catch (err) {
-        throw new StyraRunError(`Named check function '${name}' failed`, undefined, err)
-      }
-    }
-
-    throw new StyraRunError(`Named check function '${name}' not found`)
-  }
-
-  /**
    * Returns an HTTP proxy function
    *
    * @param onProxy
    * @returns {(Function(*, *): Promise)}
    */
-  proxy(onProxy = undefined) {
+  proxy(onProxy = (request, response, path, input) => input) {
     return async (request, response) => {
       try {
         if (request.method !== 'POST') {
@@ -457,31 +421,39 @@ export class Client {
         const body = await getBody(request)
         const json = fromJson(body)
 
-        const checkName = json?.check
-        const path = json?.path
-
-        if (checkName === undefined && path === undefined) {
+        if (!Array.isArray(json)) {
           response.writeHead(400, {'Content-Type': 'text/html'})
-          response.end('check or path required')
+          response.end('invalid proxy request')
           return
         }
 
-        let input = json?.input ?? {}
-        if (onProxy) {
-          input = await onProxy(request, response, input)
-        }
+        const batchItemPromises = json.map((query, i) => {
+          return new Promise(async (resolve, reject) => {
+            const path = query.path
+            if (path === undefined) {
+              reject(new StyraRunError(`proxied query with index ${i} has missing 'path'`))
+            }
 
-        let checkResult
-        if (checkName) {
-          checkResult = await this.callNamedCheck(checkName, input)
-        } else {
-          checkResult = await this.check(path, input)
-        }
-        const result = toJson(checkResult)
+            try {
+              let input = await onProxy(request, response, path, query.input)
+              const inputTransformer = this.inputTransformers[path]
+              if (inputTransformer) {
+                input = await inputTransformer(path, input)
+              }
+              resolve({path, input})
+            } catch (err) {
+              reject(new StyraRunError('Error transforming input', path, {input: query.input}, err))
+            }
+          })
+        })
+
+        const batchItems = await Promise.all(batchItemPromises)
+        const batchResult = await this.batchCheck(batchItems)
+        const result = (batchResult.result ?? []).map((item) => item.check ?? {})
 
         response.writeHead(200, {'Content-Type': 'application/json'})
-          .end(result)
-      } catch (e) {
+            .end(toJson(result))
+      } catch (err) {
         response.writeHead(500, {'Content-Type': 'text/html'})
         response.end('policy check failed')
       }
@@ -489,7 +461,18 @@ export class Client {
   }
 
   getPathPrefix() {
-    return `/v1/projects/${this.options.uid}/${this.options.pid}/envs/${this.options.eid}`
+    return `/v1/projects/${this.userId}/${this.projectId}/envs/${this.environmentId}`
+  }
+}
+
+async function handleProxyQuery(query, callback) {
+  const checkName = query?.check
+  const path = query?.path
+
+  if (checkName === undefined && path === undefined) {
+    response.writeHead(400, {'Content-Type': 'text/html'})
+    response.end('check or path required')
+    return
   }
 }
 

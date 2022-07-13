@@ -9,9 +9,9 @@ describe("Check", () => {
   const port = 8082
   const path = 'foo/allowed'
   const client = sdk.New({
-    uid: "user1",
-    pid: "proj1",
-    eid: "env1",
+    userId: "user1",
+    projectId: "proj1",
+    evironmentId: "env1",
     port: port,
     host: "localhost",
     https: false
@@ -130,7 +130,7 @@ describe("Check", () => {
       expect(err.path).toBe(path)
       expect(err.query).toEqual({input})
       expect(err.cause).toBeDefined()
-      expect(err.cause.message).toBe('Invalid JSON in response')
+      expect(err.cause.message).toBe('Invalid JSON')
     }
   })
 })
@@ -282,7 +282,7 @@ describe("Batched Check", () => {
       expect(err.path).toBeUndefined()
       expect(err.query).toEqual({items, input})
       expect(err.cause).toBeDefined()
-      expect(err.cause.message).toBe('Invalid JSON in response')
+      expect(err.cause.message).toBe('Invalid JSON')
     }
   })
 })
@@ -567,7 +567,7 @@ describe("Proxy", () => {
   beforeAll(function(done) {
     httpSpy = serverSpy.createSpyObj('mockServer', [{
         method: 'post',
-        url: `${sdkClient.getPathPrefix()}/data/${path}`,
+        url: `${sdkClient.getPathPrefix()}/data_batch`,
         handlerName: 'getMockedUrl'
       }
     ])
@@ -588,22 +588,20 @@ describe("Proxy", () => {
     }
     httpSpy.getMockedUrl.and.returnValue({
       statusCode: 200,
-      body: expectedResult
+      body: toApiBatchResponseBody(expectedResult)
     })
 
     const server = http.createServer();
     server.addListener('request', sdkClient.proxy())
 
     await withServer(server, 8081, async () => {
-      const {response, body} = await clientRequest(8081, 'POST', '/proxy', JSON.stringify({
-        path,
-        input
-      }))
+      const {response, body} = await clientRequest(8081, 'POST', '/proxy', 
+        JSON.stringify(toProxyRequestBody(path, input)))
 
       expect(response.statusCode).toBe(200)
-      expect(body).toBe(JSON.stringify(expectedResult))
+      expect(body).toBe(JSON.stringify(toProxyResponseBody(expectedResult)))
       expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
-        body: {input}
+        body: toApiBatchRequestBody(path, input)
       }));
     })
   })
@@ -614,10 +612,10 @@ describe("Proxy", () => {
     }
     httpSpy.getMockedUrl.and.returnValue({
       statusCode: 200,
-      body: expectedResult
+      body: toApiBatchResponseBody(expectedResult)
     })
 
-    const proxyCallback = async (req, res, input) => {
+    const proxyCallback = async (req, res, path, input) => {
       return {
         ...input,
         pr: 'oxy'
@@ -628,20 +626,16 @@ describe("Proxy", () => {
     server.addListener('request', sdkClient.proxy(proxyCallback))
 
     await withServer(server, 8081, async () => {
-      const {response, body} = await clientRequest(8081, 'POST', '/proxy', JSON.stringify({
-        path,
-        input
-      }))
+      const {response, body} = await clientRequest(8081, 'POST', '/proxy', 
+        JSON.stringify(toProxyRequestBody(path, input)))
 
       expect(response.statusCode).toBe(200)
-      expect(body).toBe(JSON.stringify(expectedResult))
+      expect(body).toBe(JSON.stringify(toProxyResponseBody(expectedResult)))
       expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
-        body: {
-          input: {
+        body: toApiBatchRequestBody(path, {
             ...input,
             pr: 'oxy'
-          }
-        }
+          })
       }));
     })
   })
@@ -655,10 +649,8 @@ describe("Proxy", () => {
     server.addListener('request', sdkClient.proxy(proxyCallback))
 
     await withServer(server, 8081, async () => {
-      const {response, body} = await clientRequest(8081, 'POST', '/proxy', JSON.stringify({
-        path,
-        input
-      }))
+      const {response, body} = await clientRequest(8081, 'POST', '/proxy', 
+        JSON.stringify(toProxyRequestBody(path, input)))
 
       expect(response.statusCode).toBe(500)
       expect(body).toBe('policy check failed')
@@ -669,22 +661,20 @@ describe("Proxy", () => {
     const expectedResult = {}
     httpSpy.getMockedUrl.and.returnValue({
       statusCode: 200,
-      body: expectedResult
+      body: toApiBatchResponseBody(expectedResult)
     })
 
     const server = http.createServer();
     server.addListener('request', sdkClient.proxy())
 
     await withServer(server, 8081, async () => {
-      const {response, body} = await clientRequest(8081, 'POST', '/proxy', JSON.stringify({
-        path,
-        input
-      }))
+      const {response, body} = await clientRequest(8081, 'POST', '/proxy', 
+        JSON.stringify(toProxyRequestBody(path, input)))
 
       expect(response.statusCode).toBe(200)
-      expect(body).toBe(JSON.stringify(expectedResult))
+      expect(body).toBe(JSON.stringify(toProxyResponseBody(expectedResult)))
       expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
-        body: {input}
+        body: toApiBatchRequestBody(path, input)
       }));
     })
   })
@@ -699,14 +689,12 @@ describe("Proxy", () => {
     server.addListener('request', sdkClient.proxy())
 
     await withServer(server, 8081, async () => {
-      const {response, body} = await clientRequest(8081, 'POST', '/proxy', JSON.stringify({
-        path,
-        input
-      }))
+      const {response, body} = await clientRequest(8081, 'POST', '/proxy', 
+        JSON.stringify(toProxyRequestBody(path, input)))
       expect(response.statusCode).toBe(500)
       expect(body).toBe('policy check failed')
       expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
-        body: {input}
+        body: toApiBatchRequestBody(path, input)
       }));
     })
   })
@@ -773,4 +761,30 @@ async function closeServer(server) {
       }
     })
   })
+}
+
+function toProxyRequestBody(path, input) {
+  return [{path, input}]
+}
+
+function toProxyResponseBody(result) {
+  return [result]
+}
+
+function toApiBatchRequestBody(path, input) {
+  return {
+    items: [{
+      path, input
+    }]
+  }
+}
+
+function toApiBatchResponseBody(result) {
+  return {
+    result: [
+      {
+        check: result
+      }
+    ]
+  }
 }
