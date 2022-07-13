@@ -21,14 +21,17 @@ npm install styra-run
 ### Instantiate a Run Client
 
 ```javascript
+// Options are pulled from the environment
+import StyraRun from "styra-run"
+
 const options = {
-    host: 'app-test.styra.com',
-    port: 443,
-    https: true,
-    pid: 'proj1',
-    eid: 'env1',
-    uid: 'user1',
-    token: 'my_secret'
+  https: process.env.RUN_HTTPS
+  host: process.env.RUN_HOST,
+  port: process.env.RUN_PORT !== undefined ? parseInt(process.env.RUN_PORT) : undefined,
+  projectId: process.env.RUN_PROJECT,
+  environmentId: process.env.RUN_ENVIRONMENT,
+  userId: process.env.RUN_USER,
+  token: process.env.RUN_TOKEN
 }
 const client = StyraRun.New(options)
 ```
@@ -53,30 +56,70 @@ client.check('foo/bar/allowed', input)
     })
 ```
 
-### Allow
+### Assert
+
+By default, the `assert()` function requires the policy decission to contain `{"result": true}`.
+
+```javascript
+const input = {...}
+client.assert('foo/bar/allowed', input)
+    .then(() => {
+        // Handle accept
+        ...
+    })
+    .catch((err) => {
+        // Handle error
+        ...
+    })
+```
+
+However, the default predicate can be overridden:
+
+```javascript
+const input = {...}
+// Predicate that requires the policy rule to return a dictionary containing a `{"role": "admin"}` entry.
+const myPredicate = (response) => {
+    return response?.result?.role === 'admin'
+}
+client.assert('foo/bar/allowed', input, myPredicate)
+    .then(() => {
+        // Handle accept
+        ...
+    })
+    .catch((err) => {
+        // Handle error
+        ...
+    })
+```
+
+Often, when asserting that something is allowed according to a policy, there is some piece of data that should be processed in following steps. There is a convenience function for this case:
 
 ```javascript
 const input = {...}
 const maybeAllowedObject = ...
-client.allowed('foo/bar/allowed', input, maybeAllowedObject)
+client.assertAndReturn(maybeAllowedObject, 'foo/bar/allowed', input)
     .then((allowedObject) => {
         // Do something with the allowed object
         ...
     })
     .catch((err) => {
-        // Handle rejection
+        // Handle error
         ...
     })
 ```
 
-### Filter
+### Filtering
 
 ```javascript
+import sdk, { DEFAULT_PREDICATE } from "run-sdk"
+
 const list = ["do", "re", "mi"]
 const toInput = (item) => {
     return {note: item}
 }
-client.filterAllowed('foo/bar/allowed', list, toInput)
+
+// The default predicate asserts the policy decision is equal to `{"result": true}`
+client.filter(list, DEFAULT_PREDICATE, 'foo/bar/allowed', list, toInput)
     .then((filteredList) => {
         // handle filtered list
         ...

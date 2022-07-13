@@ -1,5 +1,7 @@
+import http from "node:http"
 import serverSpy from "jasmine-http-server-spy"
-import sdk, { NOT_ALLOWED, StyraRunError, StyraRunNotAllowedError } from "../src/run-sdk.js"
+import { resolve } from "path"
+import sdk, { DEFAULT_PREDICATE, NOT_ALLOWED, StyraRunAssertionError } from "../src/run-sdk.js"
 
 describe("Check", () => {
   let httpSpy
@@ -324,7 +326,8 @@ describe("Allow", () => {
       body: {result: true}
     })
 
-    await expectAsync(client.allowed(path)).toBeResolved()
+
+    await expectAsync(client.assert(path)).toBeResolved()
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: {}
     }));
@@ -338,7 +341,7 @@ describe("Allow", () => {
       body: expectedResult
     })
 
-    await expectAsync(client.allowed(path, input)).toBeResolved()
+    await expectAsync(client.assert(path, input)).toBeResolved()
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: {input}
     }));
@@ -353,7 +356,7 @@ describe("Allow", () => {
       body: expectedResult
     })
 
-    await expectAsync(client.allowed(path, input, data))
+    await expectAsync(client.assertAndReturn(data, path, input))
       .toBeResolvedTo(data)
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: {input}
@@ -368,8 +371,8 @@ describe("Allow", () => {
       body: expectedResult
     })
 
-    await expectAsync(client.allowed(path, input))
-      .toBeRejectedWith(new StyraRunNotAllowedError(NOT_ALLOWED))
+    await expectAsync(client.assert(path, input))
+      .toBeRejectedWith(new StyraRunAssertionError(NOT_ALLOWED))
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: {input}
     }));
@@ -385,13 +388,16 @@ describe("Allow", () => {
 
     // Cannot use expectAsync().toBeRejectedWith(), as it doesn't allow us to assert error properties other than message
     try {
-      const result = await client.allowed(path, input)
+      const result = await client.assert(path, input)
       fail(`Expected error, got: ${result}`)
     } catch (err) {
+      expect(err.name).toBe('StyraRunError')
       expect(err.message).toBe('Allow check failed')
       expect(err.path).toBe(path)
       expect(err.query).toEqual({input})
+      expect(err.cause?.name).toBe('StyraRunError')
       expect(err.cause?.message).toBe('Check failed')
+      expect(err.cause?.cause?.name).toBe('StyraRunHttpError')
       expect(err.cause?.cause?.message).toBe('Unexpected status code: 500')
       expect(err.cause?.cause?.statusCode).toBe(500)
       expect(err.cause?.cause?.body).toBe('some error happened')
@@ -445,7 +451,7 @@ describe("Filter allowed", () => {
     const list = []
     const expectedList = []
 
-    const result = await client.filterAllowed(list, path)
+    const result = await client.filter(list, DEFAULT_PREDICATE, path)
     expect(result).toEqual(expectedList)
   })
 
@@ -477,7 +483,7 @@ describe("Filter allowed", () => {
     const list = ['do', 're', 'mi', 'fa', 'so', 'la']
     const expectedList = ['do', 'so', 'la']
 
-    const result = await client.filterAllowed(list, path, toInput)
+    const result = await client.filter(list, DEFAULT_PREDICATE, path, toInput)
     expect(result).toEqual(expectedList)
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: expectedQuery
@@ -515,7 +521,7 @@ describe("Filter allowed", () => {
 
     const list = ['do', 're', 'mi', 'fa', 'so', 'la']
 
-    const result = await client.filterAllowed(list, path, undefined, toPath)
+    const result = await client.filter(list, DEFAULT_PREDICATE, path, undefined, toPath)
     expect(result).toEqual(list)
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: expectedQuery
@@ -530,7 +536,7 @@ describe("Filter allowed", () => {
     const list = ['do', 're', 'mi', 'fa', 'so', 'la']
 
     try {
-      const result = await client.filterAllowed(list, undefined, undefined, toPath)
+      const result = await client.filter(list, DEFAULT_PREDICATE, undefined, undefined, toPath)
       fail(`Expected error, got: ${result}`)
     } catch (err) {
       expect(err.message).toBe('Allow filtering failed')
@@ -542,3 +548,229 @@ describe("Filter allowed", () => {
     }
   })
 })
+
+describe("Proxy", () => {
+  let httpSpy
+
+  const port = 8082
+  const path = 'foo/allowed'
+  const input = {foo: "bar"}
+  const sdkClient = sdk.New({
+    uid: "user1",
+    pid: "proj1",
+    eid: "env1",
+    port: port,
+    host: "localhost",
+    https: false
+  })
+
+  beforeAll(function(done) {
+    httpSpy = serverSpy.createSpyObj('mockServer', [{
+        method: 'post',
+        url: `${sdkClient.getPathPrefix()}/data/${path}`,
+        handlerName: 'getMockedUrl'
+      }
+    ])
+    httpSpy.server.start(8082, done)
+  })
+  
+  afterAll(function(done) {
+    httpSpy.server.stop(done)
+  })
+
+  afterEach(function() {
+    httpSpy.getMockedUrl.calls.reset();
+  })
+
+  it("Success, no callback", async () => {
+    const expectedResult = {
+      result: true
+    }
+    httpSpy.getMockedUrl.and.returnValue({
+      statusCode: 200,
+      body: expectedResult
+    })
+
+    const server = http.createServer();
+    server.addListener('request', sdkClient.proxy())
+
+    await withServer(server, 8081, async () => {
+      const {response, body} = await clientRequest(8081, 'POST', '/proxy', JSON.stringify({
+        path,
+        input
+      }))
+
+      expect(response.statusCode).toBe(200)
+      expect(body).toBe(JSON.stringify(expectedResult))
+      expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
+        body: {input}
+      }));
+    })
+  })
+
+  it("Success, with callback", async () => {
+    const expectedResult = {
+      result: true
+    }
+    httpSpy.getMockedUrl.and.returnValue({
+      statusCode: 200,
+      body: expectedResult
+    })
+
+    const proxyCallback = async (req, res, input) => {
+      return {
+        ...input,
+        pr: 'oxy'
+      }
+    }
+
+    const server = http.createServer();
+    server.addListener('request', sdkClient.proxy(proxyCallback))
+
+    await withServer(server, 8081, async () => {
+      const {response, body} = await clientRequest(8081, 'POST', '/proxy', JSON.stringify({
+        path,
+        input
+      }))
+
+      expect(response.statusCode).toBe(200)
+      expect(body).toBe(JSON.stringify(expectedResult))
+      expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
+        body: {
+          input: {
+            ...input,
+            pr: 'oxy'
+          }
+        }
+      }));
+    })
+  })
+
+  it("Success, with callback throwing exception", async () => {
+    const proxyCallback = async (req, res, input) => {
+      throw Error("FOO BAR")
+    }
+
+    const server = http.createServer();
+    server.addListener('request', sdkClient.proxy(proxyCallback))
+
+    await withServer(server, 8081, async () => {
+      const {response, body} = await clientRequest(8081, 'POST', '/proxy', JSON.stringify({
+        path,
+        input
+      }))
+
+      expect(response.statusCode).toBe(500)
+      expect(body).toBe('policy check failed')
+    })
+  })
+
+  it("Success, rejected", async () => {
+    const expectedResult = {}
+    httpSpy.getMockedUrl.and.returnValue({
+      statusCode: 200,
+      body: expectedResult
+    })
+
+    const server = http.createServer();
+    server.addListener('request', sdkClient.proxy())
+
+    await withServer(server, 8081, async () => {
+      const {response, body} = await clientRequest(8081, 'POST', '/proxy', JSON.stringify({
+        path,
+        input
+      }))
+
+      expect(response.statusCode).toBe(200)
+      expect(body).toBe(JSON.stringify(expectedResult))
+      expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
+        body: {input}
+      }));
+    })
+  })
+
+  it("Success, back-end failure", async () => {
+    httpSpy.getMockedUrl.and.returnValue({
+      statusCode: 400,
+      body: 'ERROR'
+    })
+
+    const server = http.createServer();
+    server.addListener('request', sdkClient.proxy())
+
+    await withServer(server, 8081, async () => {
+      const {response, body} = await clientRequest(8081, 'POST', '/proxy', JSON.stringify({
+        path,
+        input
+      }))
+      expect(response.statusCode).toBe(500)
+      expect(body).toBe('policy check failed')
+      expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
+        body: {input}
+      }));
+    })
+  })
+})
+
+function clientRequest(port, method, path, data = undefined) {
+  const options = {
+    port,
+    path,
+    method,
+    host: 'localhost'
+  }
+
+  return new Promise((resolve, reject) => {
+    const req = http.request(options, (response) => {
+      let body = ''
+
+      //another chunk of data has been received
+      response.on('data', (chunk) => {
+        body += chunk
+      })
+
+      //the whole response has been received
+      response.on('end', () => {
+        resolve({response, body})
+      })
+    }).on('error', (err) => {
+      reject(new Error('Failed to send request', {
+        cause: err
+      }))
+    });
+    if (data) {
+      req.write(data)
+    }
+    req.end()
+  })
+}
+
+async function withServer(server, port, callback) {
+  await startServer(server, port)
+  await callback(server)
+  await closeServer(server)
+}
+
+async function startServer(server, port) {
+  await new Promise((resolve, reject) => {
+    server.listen(8081, (err) => {
+      if (err) {
+        reject(err)
+      } else {
+        resolve()
+      }
+    })
+  })
+}
+
+async function closeServer(server) {
+  await new Promise((resolve, reject) => {
+    server.close((err) => {
+      if (err) {
+        reject(err)
+      } else {
+        resolve()
+      }
+    })
+  })
+}
