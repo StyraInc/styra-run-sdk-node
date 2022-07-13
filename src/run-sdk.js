@@ -1,28 +1,39 @@
-import http from "http";
-import https from "https";
+import Http from "http"
+import Https from "https"
+import Path from "path"
 
-// TODO: Tighten error handling
 // TODO: Add support for versioning/ETags for data API requests
-// TODO: Add support for batched queries
-// TODO: Better logging
 
-// export class Options {
-//     host
-//     port
-//     pid
-//     eid
-//     token
-// }
+export class StyraRunError extends Error {
+  constructor(message, path = undefined, query = undefined, cause = undefined) {
+    super(message)
+    this.name = "StyraRunError"
+    this.path = path
+    this.query = query
+    this.cause = cause
+  }
+}
 
-// export class Result {
-//     result
-//     version
-// }
+export class StyraRunNotAllowedError extends StyraRunError {
+  constructor(path = undefined, query = undefined) {
+    super(NOT_ALLOWED, path, query)
+    this.name = "StyraRunNotAllowedError"
+  }
+}
+
+export class StyraRunHttpError extends Error {
+  constructor(message, statusCode, body) {
+    super(message)
+    this.name = "HttpError"
+    this.statusCode = statusCode
+    this.body = body
+  }
+}
 
 const OK = 200
 const FORBIDDEN = 403
 
-const NOT_ALLOWED = 'Not allowed!'
+export const NOT_ALLOWED = 'Not allowed!'
 
 export class Client {
   options
@@ -34,7 +45,7 @@ export class Client {
   }
 
   /**
-   * Makes an  authorization check against a policy rule specified by `'path'`.
+   * Makes an authorization check against a policy rule specified by `'path'`.
    * Where `'path'` is the trailing component(s) of the full request path `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`
    * Returns a `Promise` that on a successful response resolves to the response body dictionary: `{"result": ...}`.
    *
@@ -42,11 +53,11 @@ export class Client {
    * @param input the input document for the query
    * @returns {Promise<unknown>}
    */
-  check(path, input) {
-    const query = {input: input}
+  check(path, input = undefined) {
+    const query = input ? {input} : {}
     const reqOpts = {
       ...this.options,
-      path: `/v1/projects/${this.options.uid}/${this.options.pid}/envs/${this.options.eid}/data/${path}`,
+      path: Path.join(this.getPathPrefix(), 'data', path),
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -56,9 +67,52 @@ export class Client {
 
     return toJson(query)
       .then(query => request(reqOpts, query))
-      .then(JSON.parse)
+      .then(fromJson)
       .catch(err => {
-        return Promise.reject({msg: 'Check request failed', err: err});
+        return Promise.reject(new StyraRunError('Check failed', path, query, err))
+      });
+  }
+
+  /**
+   * Makes a batched authorization check.
+   * The provided `'items'` is a list of dictionaries with the properties:
+   * 
+   * * `path`: the path to the policy rule to query for this entry
+   * * `input`: (optional) the input document for this entry
+   * 
+   * If, `'input'` is provided, it will be applied across all query items.
+   * 
+   * Returns a list of result dictionaries; where each entry corresponds to an entry 
+   * with the same index in `'items'`.
+   * 
+   * @param items the list of queries to batch
+   * @param input the input document to apply to the entire batch request, or `undefined`
+   * @returns a list of result dictionaries
+   */
+  batchCheck(items, input = undefined) {
+    const query = {items}
+    if (input) {
+      query.input = input
+    }
+
+    const reqOpts = {
+      ...this.options,
+      path: Path.join(this.getPathPrefix(), 'data_batch'),
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'authorization': `bearer ${this.options.token}`
+      }
+    }
+
+    return toJson(query)
+      .then(query => request(reqOpts, query))
+      // .then(fromJson)
+      .then((data) => {
+        return fromJson(data)
+      })
+      .catch(err => {
+        return Promise.reject(new StyraRunError('Batched check failed', undefined, query, err))
       });
   }
 
@@ -72,7 +126,7 @@ export class Client {
    * @param data optional value to return on allowed
    * @returns {Promise<unknown>}
    */
-  allowed(path, input, data = undefined) {
+  allowed(path, input = undefined, data = undefined) {
     return new Promise((resolve, reject) => {
       this.check(path, input)
         .then((response) => {
@@ -82,11 +136,10 @@ export class Client {
             }
             return resolve()
           }
-          return reject({msg: NOT_ALLOWED})
+          reject(new StyraRunNotAllowedError(path, {input}))
         })
         .catch((err) => {
-          console.debug("Allow check failed", err)
-          reject(err)
+          reject(new StyraRunError('Allow check failed', path, {input}, err))
         })
     })
   }
@@ -98,29 +151,53 @@ export class Client {
    *
    * @param path the path to the policy rule to query
    * @param list the list to filter
-   * @param toInput a callback that, given a list entry, should return an `input` document for the query
+   * @param toInput optional, a callback that, given a list entry and an index, should return an `input` document
+   * @param toPath optional, a callback that, given a list entry and an index, should return a `path` string. If provided, overrides the global `'path'` argument
    * @returns {Promise<Awaited<unknown>[]>}
    */
-  filterAllowed(path, list, toInput) {
-    // TODO: Use batch endpoint, when ready
-    return Promise.all(list.map((entry) => {
-      const input = toInput(entry)
-      console.debug("Filtering: ", path, input)
-      return this.check(path, input)
-        .then((response) => {
-          if (response.result === true) {
-            return entry
-          }
-          return undefined
-        }).catch((err) => {
-          // TODO: Collect errors for later return.
-          // FIXME: Can we do an early abort? Should we?
-          console.warn("Check to filter entry failed; dropping entry", entry, err)
-          return undefined
-        })
-    }))
-      .then((list) => list
-        .filter((entry) => entry !== undefined))
+  filterAllowed(list, path = undefined, toInput = undefined, toPath = undefined) {
+    if (list.length === 0) {
+      return Promise.resolve([])
+    }
+
+    const transformer = (entry, i) => {
+        const item = {}
+  
+        const itemInput = toInput ? toInput(entry, i) : undefined
+        if (itemInput) {
+          item.input = itemInput
+        }
+  
+        const itemPath = toPath ? toPath(entry, i) : undefined
+        item.path = itemPath ?? path
+        if (item.path === undefined) {
+          throw new StyraRunError(`No 'path' provided for list entry at ${i}`)
+        }
+  
+        return item
+    }
+
+    return new Promise((resolve, reject) => {
+      try {
+        const items = list.map(transformer)
+        resolve(items)
+      } catch (err) {
+        reject(err)
+      }
+    })
+      .then((items) => this.batchCheck(items))
+      .then((response) => new Promise((resolve, reject) => {
+        const resultList = response.result ?? []
+        if (resultList.length !== list.length) {
+          reject(new StyraRunError(`Returned result list size (${resultList.length}) not equal to provided list size (${list.length})`, 
+            path, query, err))
+        }
+        const filtered = list.filter((_, i) => resultList[i]?.check?.result === true)
+        resolve(filtered)
+      }))
+      .catch(err => {
+        return Promise.reject(new StyraRunError('Allow filtering failed', path, undefined, err))
+      });
   }
 
   /**
@@ -135,21 +212,20 @@ export class Client {
   getData(path, def = undefined) {
     const reqOpts = {
       ...this.options,
-      path: `/v1/projects/${this.options.uid}/${this.options.pid}/envs/${this.options.eid}/data/${path}`,
+      path: Path.join(this.getPathPrefix(), 'data', path),
       method: 'GET',
       headers: {
         'authorization': `bearer ${this.options.token}`
       }
     };
-    console.debug("Making GET data request", reqOpts)
 
     return request(reqOpts)
-      .then(JSON.parse)
+      .then(fromJson)
       .catch((err) => {
         if (def && err.resp?.statusCode === 404) {
           return {result: def}
         }
-        return Promise.reject({msg: 'GET data request failed', err: err})
+        return Promise.reject(new StyraRunError('GET data request failed', path, undefined, err))
       });
   }
 
@@ -165,20 +241,19 @@ export class Client {
   putData(path, data) {
     const reqOpts = {
       ...this.options,
-      path: `/v1/projects/${this.options.uid}/${this.options.pid}/envs/${this.options.eid}/data/${path}`,
+      path: Path.join(this.getPathPrefix(), 'data', path),
       method: 'PUT',
       headers: {
         'content-type': 'application/json',
         'authorization': `Bearer ${this.options.token}`
       }
     };
-    console.debug("Making PUT data request", reqOpts, data)
 
     return toJson(data)
       .then((data) => request(reqOpts, data))
-      .then(JSON.parse)
+      .then(fromJson)
       .catch((err) => {
-        return Promise.reject({msg: `PUT data request to '${reqOpts.path}' failed`, err: err});
+        return Promise.reject(new StyraRunError('PUT data request failed', path, undefined, err))
       });
   }
 
@@ -193,18 +268,17 @@ export class Client {
   deleteData(path) {
     const reqOpts = {
       ...this.options,
-      path: `/v1/projects/${this.options.uid}/${this.options.pid}/envs/${this.options.eid}/data/${path}`,
+      path: Path.join(this.getPathPrefix(), 'data', path),
       method: 'DELETE',
       headers: {
         'authorization': `bearer ${this.options.token}`
       }
     };
-    console.debug("Making DELETE data request", reqOpts)
 
     return request(reqOpts)
-      .then(JSON.parse)
+      .then(fromJson)
       .catch(err => {
-        return Promise.reject({msg: 'DELETE data request failed', err: err});
+        return Promise.reject(new StyraRunError('DELETE data request failed', path, undefined, err))
       });
   }
 
@@ -230,12 +304,10 @@ export class Client {
     const namedCheck = this.namedCheckFunctions[name]
 
     if (namedCheck) {
-      console.debug("Calling named check function", name)
       return await namedCheck(this, input)
     }
 
-    console.warn("Named check function not found", name)
-    throw {msg: 'Named check function not found'}
+    throw new StyraRunError(`Named check function '${name}' not found`)
   }
 
   /**
@@ -253,8 +325,6 @@ export class Client {
         input = await onProxy(req, res, input)
       }
 
-      console.debug('Proxied check:', path, input)
-
       let checkResult;
       try {
         if (checkName) {
@@ -263,7 +333,6 @@ export class Client {
           checkResult = await this.check(path, input)
         }
       } catch (e) {
-        console.debug("Proxied check failed.", e)
         checkResult = undefined
       }
 
@@ -273,6 +342,10 @@ export class Client {
 
       return res.status(OK).json(checkResult).end()
     }
+  }
+
+  getPathPrefix() {
+    return `/v1/projects/${this.options.uid}/${this.options.pid}/envs/${this.options.eid}`
   }
 }
 
@@ -295,11 +368,11 @@ function New(options) {
   return new Client(options);
 }
 
-function request(opts, data) {
+function request(options, data) {
   return new Promise((resolve, reject) => {
     try {
-      const client = opts.https === false ? http : https
-      const req = client.request(opts, (response) => {
+      const client = options.https === false ? Http : Https
+      const req = client.request(options, (response) => {
         let body = '';
 
         //another chunk of data has been received
@@ -314,35 +387,42 @@ function request(opts, data) {
               resolve(body);
               break;
             default:
-              reject({
-                msg: `Unexpected status code: ${response.statusCode}`,
-                resp: response,
-                body: body
-              });
+              reject(new StyraRunHttpError(`Unexpected status code: ${response.statusCode}`, 
+                response.statusCode, body));
           }
         });
       }).on('error', (err) => {
-        reject(err)
+        reject(new Error('Failed to send request', {
+          cause: err
+        }))
       });
       if (data) {
         req.write(data);
       }
       req.end()
     } catch (err) {
-      reject(err)
+      reject(new Error('Failed to send request', {
+        cause: err
+      }))
     }
   });
 }
 
-function toJson(data) {
-  return new Promise((resolve, reject) => {
-    const json = JSON.stringify(data);
-    if (json) {
-      resolve(json)
-    } else {
-      reject({msg: 'JSON serialization produced undefined result'})
-    }
-  });
+async function toJson(data) {
+  const json = JSON.stringify(data);
+  if (json) {
+    return json
+  } else {
+    throw new Error('JSON serialization produced undefined result')
+  }
+}
+
+async function fromJson(str) {
+  try {
+    return JSON.parse(str)
+  } catch (err) {
+    throw new Error('Invalid JSON in response', {cause: err})
+  }
 }
 
 export default {
