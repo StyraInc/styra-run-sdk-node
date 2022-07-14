@@ -141,14 +141,15 @@ describe("Batched Check", () => {
 
   const port = 8082
   const path = 'foo/allowed'
-  const client = sdk.New({
+  const clientOptions = {
     uid: "user1",
     pid: "proj1",
     eid: "env1",
     port: port,
     host: "localhost",
     https: false
-  })
+  }
+  const client = sdk.New(clientOptions)
 
   beforeAll(function(done) {
     httpSpy = serverSpy.createSpyObj('mockServer', [{
@@ -170,9 +171,9 @@ describe("Batched Check", () => {
 
   it("Successful, no global input", async () => {
     const expectedResult = [
-      {result: true},
-      {},
-      {result: 1337}
+      {check: {result: true}},
+      {check: {}},
+      {check: {result: 1337}}
     ]
     const items = [
       {path: '/foo'},
@@ -182,7 +183,7 @@ describe("Batched Check", () => {
 
     httpSpy.getMockedUrl.and.returnValue({
       statusCode: 200,
-      body: expectedResult
+      body: {result: expectedResult}
     })
 
     const result = await client.batchCheck(items)
@@ -192,11 +193,54 @@ describe("Batched Check", () => {
     }));
   })
 
+  it("Successful, max allowed items reached", async () => {
+    const client = sdk.New({
+      ...clientOptions,
+      batchMaxItems: 3
+    })
+    const items = [
+      {path: '/do'},
+      {path: '/re', input: {subject: 'admin'}},
+      {path: '/mi', input: 42},
+      {path: '/fa', input: 1337}
+    ]
+    const expectedResult = [
+      {check: {result: true}},
+      {check: {}},
+      {check: {result: 1337}},
+      {check: {result: 'foo'}}
+    ]
+
+    let requestCounter = 0
+    httpSpy.getMockedUrl.and.callFake((req) => {
+      if (requestCounter++ === 0) {
+        return {
+          statusCode: 200,
+          body: {result: expectedResult.slice(0, 3)}
+        }
+      } else {
+        return {
+          statusCode: 200,
+          body: {result: expectedResult.slice(3)}
+        }
+      }
+    })
+
+    const result = await client.batchCheck(items)
+    expect(result).toEqual(expectedResult)
+    expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
+      body: {items: items.slice(0, 3)}
+    }));
+    expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
+      body: {items: items.slice(3)}
+    }));
+  })
+
   it("Successful, with global input", async () => {
     const expectedResult = [
-      {result: true},
-      {},
-      {result: 1337}
+      {check: {result: true}},
+      {check: {}},
+      {check: {result: 1337}}
     ]
     const items = [
       {path: '/foo'},
@@ -209,7 +253,7 @@ describe("Batched Check", () => {
 
     httpSpy.getMockedUrl.and.returnValue({
       statusCode: 200,
-      body: expectedResult
+      body: {result: expectedResult}
     })
 
     const result = await client.batchCheck(items, input)

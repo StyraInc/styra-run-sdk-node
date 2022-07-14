@@ -57,23 +57,24 @@ export function DEFAULT_PREDICATE(decision) {
  * A client for communicating with the Styra Run API.
  */
 export class Client {
-  host
-  port
-  https
-  projectId
-  environmentId
-  userId
-  token
-  inputTransformers
-
-  constructor({host, port, https, projectId, environmentId, userId, token}) {
-    this.host = host ?? "api-test.styra.com"
-    this.port = port ?? 443
-    this.https = https ?? true
+  constructor({
+    host = "api-test.styra.com", 
+    port = 443, 
+    https = true, 
+    projectId, 
+    environmentId, 
+    userId, 
+    token, 
+    batchMaxItems = 20
+  }) {
+    this.host = host
+    this.port = port
+    this.https = https
     this.projectId = projectId
     this.environmentId = environmentId
     this.userId = userId
     this.token = token
+    this.batchMaxItems = batchMaxItems
     this.inputTransformers = {}
   }
 
@@ -130,13 +131,14 @@ export class Client {
     }
   }
 
-
   /**
-   * @typedef {{check: CheckResult}} BatchCheckItemResult
+   * @typedef {{code: string, message: string}} CheckError
    */
-
   /**
-   * @typedef {{result: BatchCheckItemResult[]}} BatchCheckResult
+   * @typedef {{check: CheckResult}|{error: CheckError}} BatchCheckItemResult
+   */
+  /**
+   * @typedef {BatchCheckItemResult[]} BatchCheckResult
    */
   /**
    * Makes a batched authorization check.
@@ -156,28 +158,44 @@ export class Client {
    * @returns {Promise<BatchCheckResult, StyraRunError>} a list of result dictionaries
    */
   async batchCheck(items, input = undefined) {
-    const query = {items}
-    if (input) {
-      query.input = input
+    // Split the items over multiple batch requests, if necessary;
+    // to cope with server-side enforced size limit of batch request.
+    const remainingItems = [...items]
+    const chunkedItems = []
+    while (remainingItems.length > 0) {
+      chunkedItems.push(remainingItems.splice(0, this.batchMaxItems))
     }
 
-    const reqOpts = {
-      ...this.getConnectionOptions(),
-      path: Path.join(this.getPathPrefix(), 'data_batch'),
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'authorization': `bearer ${this.token}`
+    const queries = chunkedItems.map(async (items) => {
+      const query = {items}
+      if (input) {
+        query.input = input
       }
-    }
 
-    try {
-      const json = toJson(query)
-      const response = await request(reqOpts, json)
-      return fromJson(response)
-    } catch (err) {
-      return await Promise.reject(new StyraRunError('Batched check failed', undefined, query, err))
-    }
+      const reqOpts = {
+        ...this.getConnectionOptions(),
+        path: Path.join(this.getPathPrefix(), 'data_batch'),
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'authorization': `bearer ${this.token}`
+        }
+      }
+
+      try {
+        const json = toJson(query)
+        const response = await request(reqOpts, json)
+        return fromJson(response)
+      } catch (err) {
+        throw new StyraRunError('Batched check failed', undefined, query, err)
+      }
+    })
+
+    const decisionChunks = await Promise.all(queries)
+    const decisions = decisionChunks
+      .map((decision) => decision.result ?? [])
+      .flat(1)
+    return decisions
   }
 
   /**
@@ -286,15 +304,14 @@ export class Client {
     let resultList
     try {
       const items = list.map(transformer)
-      const batchResult = await this.batchCheck(items)
-      resultList = batchResult.result ?? []
+      resultList = await this.batchCheck(items)
     } catch (err) {
       throw new StyraRunError('Allow filtering failed', path, undefined, err)
     }
 
-    if (resultList.length !== list.length) {
-      throw new StyraRunError(`Returned result list size (${resultList.length}) not equal to provided list size (${list.length})`,
-        path, query, err)
+    if (resultList === undefined || resultList.length !== list.length) {
+      throw new StyraRunError(`Returned result list size (${resultList?.length}) not equal to provided list size (${list.length})`,
+        path)
     }
 
     try {
@@ -449,7 +466,7 @@ export class Client {
 
         const batchItems = await Promise.all(batchItemPromises)
         const batchResult = await this.batchCheck(batchItems)
-        const result = (batchResult.result ?? []).map((item) => item.check ?? {})
+        const result = (batchResult ?? []).map((item) => item.check ?? {})
 
         response.writeHead(200, {'Content-Type': 'application/json'})
             .end(toJson(result))
@@ -503,6 +520,7 @@ function getBody(stream) {
  * * `environmentId`: (string) Environment ID
  * * `userId`: (string) User ID
  * * `token`: (string) the API key (Bearer token) to use for calls to the `Styra Run` API
+ * * `batchMaxItems`: (number) the maximum number of query items to send in a batch request. If the number of items exceed this number, they will be split over multiple batch requests. (default: 20)
  *
  * @param options
  * @returns {Client}
