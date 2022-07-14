@@ -20,6 +20,10 @@ export class StyraRunError extends Error {
     this.query = query
     this.cause = cause
   }
+
+  isStyraRunError() {
+    return true
+  }
 }
 
 /**
@@ -49,12 +53,9 @@ const FORBIDDEN = 403
 
 export const NOT_ALLOWED = 'Not allowed!'
 
-export function DEFAULT_PREDICATE(decision) {
-  return decision?.result === true
-}
-
 /**
  * A client for communicating with the Styra Run API.
+ * @class
  */
 export class Client {
   constructor({
@@ -65,7 +66,8 @@ export class Client {
     environmentId, 
     userId, 
     token, 
-    batchMaxItems = 20
+    batchMaxItems = 20,
+    inputTransformers = {}
   }) {
     this.host = host
     this.port = port
@@ -75,7 +77,7 @@ export class Client {
     this.userId = userId
     this.token = token
     this.batchMaxItems = batchMaxItems
-    this.inputTransformers = {}
+    this.inputTransformers = inputTransformers
   }
 
   getConnectionOptions() {
@@ -95,7 +97,7 @@ export class Client {
   }
 
   /**
-   * @typedef {{result: unknown}|{}} CheckResult
+   * @typedef {{result: *}|{}} CheckResult
    */
   /**
    * Makes an authorization check against a policy rule specified by `path`.
@@ -201,7 +203,7 @@ export class Client {
   /**
    * @callback AssertPredicate
    * @param {CheckResult} decision
-   * @returns {Boolean} `true` is `decision` is valide, `false` otherwise
+   * @returns {Boolean} `true` is `decision` is valid, `false` otherwise
    */
   /**
    * Makes an authorization check against a policy rule specified by `path`.
@@ -258,7 +260,7 @@ export class Client {
    * @param path the path to the policy rule to query
    * @param input the input document for the query
    * @param predicate a callback function, taking a response body dictionary as arg, returning true/false
-   * @returns {Promise<unknown, StyraRunError>}
+   * @returns {Promise<?, StyraRunError>}
    * @see {@link assert}
    */
   async assertAndReturn(data, path, input = undefined, predicate = DEFAULT_PREDICATE) {
@@ -277,7 +279,7 @@ export class Client {
    * @param list the list to filter
    * @param toInput optional, a callback that, given a list entry and an index, should return an `input` document
    * @param toPath optional, a callback that, given a list entry and an index, should return a `path` string. If provided, overrides the global `'path'` argument
-   * @returns {Promise<any[], StyraRunError>}
+   * @returns {Promise<*[], StyraRunError>}
    */
   async filter(list, predicate, path = undefined, toInput = undefined, toPath = undefined) {
     if (list.length === 0) {
@@ -421,12 +423,34 @@ export class Client {
   }
 
   /**
+   * @callback OnProxyCallback
+   * @param request the incoming HTTP request
+   * @param response the outgoing HTTP response
+   * @param {string} path the path to the policy rule being queried
+   * @param {*} input the input document/value for the policy query
+   * @returns the input document/value that should be used for the proxied policy query
+   */
+  /**
+   * @callback OnProxyDoneCallback
+   * @param request the incoming HTTP request
+   * @param response the outgoing HTTP response
+   * @param {BatchCheckItemResult[]} result the result of the proxied policy query, that should be serialized and returned to the caller
+   */
+  /**
+   * @callback OnProxyErrorCallback
+   * @param request the incoming HTTP request
+   * @param response the outgoing HTTP response
+   * @param {StyraRunError} error the error generated when proxying the policy query
+   */
+  /**
    * Returns an HTTP proxy function
    *
-   * @param onProxy
+   * @param {OnProxyCallback} onProxy callback called for every proxied policy query
+   * @param {OnProxyDoneCallback} onDone
+   * @param {OnProxyErrorCallback} onError
    * @returns {(Function(*, *): Promise)}
    */
-  proxy(onProxy = (request, response, path, input) => input) {
+  proxy(onProxy = DEFAULT_ON_PROXY_HANDLER, onDone = DEFAULT_PROXY_DONE_HANDLER, onError = DEFAULT_PROXY_ERROR_HANDLER) {
     return async (request, response) => {
       try {
         if (request.method !== 'POST') {
@@ -468,11 +492,9 @@ export class Client {
         const batchResult = await this.batchCheck(batchItems)
         const result = (batchResult ?? []).map((item) => item.check ?? {})
 
-        response.writeHead(200, {'Content-Type': 'application/json'})
-            .end(toJson(result))
+        onDone(request, response, result)
       } catch (err) {
-        response.writeHead(500, {'Content-Type': 'text/html'})
-        response.end('policy check failed')
+        onError(request, response, err)
       }
     }
   }
@@ -480,6 +502,24 @@ export class Client {
   getPathPrefix() {
     return `/v1/projects/${this.userId}/${this.projectId}/envs/${this.environmentId}`
   }
+}
+
+function DEFAULT_PREDICATE(decision) {
+  return decision?.result === true
+}
+
+function DEFAULT_ON_PROXY_HANDLER(request, response, path, input) {
+  return input
+}
+
+function DEFAULT_PROXY_DONE_HANDLER(request, response, result) {
+  response.writeHead(200, {'Content-Type': 'application/json'})
+    .end(toJson(result))
+}
+
+function DEFAULT_PROXY_ERROR_HANDLER(request, response, error) {
+  response.writeHead(500, {'Content-Type': 'text/html'})
+  response.end('policy check failed')
 }
 
 async function handleProxyQuery(query, callback) {
