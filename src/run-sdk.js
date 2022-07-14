@@ -1,6 +1,9 @@
 import Http from "http"
 import Https from "https"
 import Path from "path"
+import { ApiClient } from "./api-client.js"
+import { StyraRunError, StyraRunAssertionError, StyraRunHttpError } from "./errors.js"
+import { getBody, toJson, fromJson } from "./helpers.js"
 
 // TODO: Add support for versioning/ETags for data API requests
 // TODO: Add support for fail-over/retry when server connection is broken
@@ -8,50 +11,6 @@ import Path from "path"
 /**
  * @module StyraRun
  */
-
-/**
- * General Styra Run Client {@link Error}.
- */
-export class StyraRunError extends Error {
-  constructor(message, path = undefined, query = undefined, cause = undefined) {
-    super(message)
-    this.name = "StyraRunError"
-    this.path = path
-    this.query = query
-    this.cause = cause
-  }
-
-  isStyraRunError() {
-    return true
-  }
-}
-
-/**
- * Error for when the {@link Client#assert} {@link AssertPredicate `predicate`} rejects a policy decision.
- */
-export class StyraRunAssertionError extends StyraRunError {
-  constructor(path = undefined, query = undefined) {
-    super(NOT_ALLOWED, path, query)
-    this.name = "StyraRunAssertionError"
-  }
-}
-
-/**
- * Styra Run Client HTTP {@link Error}.
- */
-export class StyraRunHttpError extends Error {
-  constructor(message, statusCode, body) {
-    super(message)
-    this.name = "StyraRunHttpError"
-    this.statusCode = statusCode
-    this.body = body
-  }
-}
-
-const OK = 200
-const FORBIDDEN = 403
-
-export const NOT_ALLOWED = 'Not allowed!'
 
 /**
  * A client for communicating with the Styra Run API.
@@ -67,7 +26,8 @@ export class Client {
     userId, 
     token, 
     batchMaxItems = 20,
-    inputTransformers = {}
+    inputTransformers = {},
+    sortGateways = DEFAULT_SORT_GATEWAYS_CALLBACK
   }) {
     this.host = host
     this.port = port
@@ -78,14 +38,7 @@ export class Client {
     this.token = token
     this.batchMaxItems = batchMaxItems
     this.inputTransformers = inputTransformers
-  }
-
-  getConnectionOptions() {
-    return {
-      host: this.host,
-      port: this.port,
-      https: this.https
-    }
+    this.apiClient = new ApiClient(host, port, https)
   }
 
   getPathPrefix() {
@@ -115,7 +68,6 @@ export class Client {
   async check(path, input = undefined) {
     const query = input ? {input} : {}
     const reqOpts = {
-      ...this.getConnectionOptions(),
       path: Path.join(this.getPathPrefix(), 'data', path),
       method: 'POST',
       headers: {
@@ -126,7 +78,7 @@ export class Client {
 
     try {
       const json = toJson(query)
-      const decission = await request(reqOpts, json)
+      const decission = await this.apiClient.request(reqOpts, json)
       return fromJson(decission)
     } catch (err) {
       return await Promise.reject(new StyraRunError('Check failed', path, query, err))
@@ -175,7 +127,6 @@ export class Client {
       }
 
       const reqOpts = {
-        ...this.getConnectionOptions(),
         path: Path.join(this.getPathPrefix(), 'data_batch'),
         method: 'POST',
         headers: {
@@ -186,7 +137,7 @@ export class Client {
 
       try {
         const json = toJson(query)
-        const response = await request(reqOpts, json)
+        const response = await this.apiClient.request(reqOpts, json)
         return fromJson(response)
       } catch (err) {
         throw new StyraRunError('Batched check failed', undefined, query, err)
@@ -339,7 +290,6 @@ export class Client {
    */
   async getData(path, def = undefined) {
     const reqOpts = {
-      ...this.getConnectionOptions(),
       path: Path.join(this.getPathPrefix(), 'data', path),
       method: 'GET',
       headers: {
@@ -348,7 +298,7 @@ export class Client {
     };
 
     try {
-      const response = await request(reqOpts)
+      const response = await this.apiClient.request(reqOpts)
       return fromJson(response)
     } catch (err) {
       if (def && err.resp?.statusCode === 404) {
@@ -376,7 +326,6 @@ export class Client {
    */
   async putData(path, data) {
     const reqOpts = {
-      ...this.getConnectionOptions(),
       path: Path.join(this.getPathPrefix(), 'data', path),
       method: 'PUT',
       headers: {
@@ -387,7 +336,7 @@ export class Client {
 
     try {
       const json = toJson(data)
-      const response = await request(reqOpts, json)
+      const response = await this.apiClient.request(reqOpts, json)
       return fromJson(response)
     } catch (err) {
       return await Promise.reject(new StyraRunError('PUT data request failed', path, undefined, err))
@@ -406,7 +355,6 @@ export class Client {
    */
   async deleteData(path) {
     const reqOpts = {
-      ...this.getConnectionOptions(),
       path: Path.join(this.getPathPrefix(), 'data', path),
       method: 'DELETE',
       headers: {
@@ -415,7 +363,7 @@ export class Client {
     };
 
     try {
-      const response = await request(reqOpts)
+      const response = await this.apiClient.request(reqOpts)
       return fromJson(response)
     } catch (err) {
       return await Promise.reject(new StyraRunError('DELETE data request failed', path, undefined, err))
@@ -504,7 +452,11 @@ export class Client {
   }
 }
 
-function DEFAULT_PREDICATE(decision) {
+function DEFAULT_SORT_GATEWAYS_CALLBACK(gateways) {
+  return gateways
+}
+
+export function DEFAULT_PREDICATE(decision) {
   return decision?.result === true
 }
 
@@ -520,34 +472,6 @@ function DEFAULT_PROXY_DONE_HANDLER(request, response, result) {
 function DEFAULT_PROXY_ERROR_HANDLER(request, response, error) {
   response.writeHead(500, {'Content-Type': 'text/html'})
   response.end('policy check failed')
-}
-
-async function handleProxyQuery(query, callback) {
-  const checkName = query?.check
-  const path = query?.path
-
-  if (checkName === undefined && path === undefined) {
-    response.writeHead(400, {'Content-Type': 'text/html'})
-    response.end('check or path required')
-    return
-  }
-}
-
-function getBody(stream) {
-  return new Promise((resolve, reject) => {
-    if (stream.body) {
-      // express compatibility
-      resolve(stream.body)
-    } else {
-      var body = ''
-      stream.on('data', (data) => {
-        body += data
-      })
-      stream.on('end', () => {
-        resolve(body)
-      })
-    }
-  })
 }
 
 /**
@@ -568,57 +492,6 @@ function getBody(stream) {
  */
 function New(options) {
   return new Client(options);
-}
-
-function request(options, data) {
-  return new Promise((resolve, reject) => {
-    try {
-      const client = options.https === false ? Http : Https
-      const req = client.request(options, async (response) => {
-        let body = await getBody(response);
-        switch (response.statusCode) {
-          case OK:
-            resolve(body);
-            break;
-          default:
-            reject(new StyraRunHttpError(`Unexpected status code: ${response.statusCode}`,
-              response.statusCode, body));
-        }
-      }).on('error', (err) => {
-        reject(new Error('Failed to send request', {
-          cause: err
-        }))
-      })
-      if (data) {
-        req.write(data);
-      }
-      req.end()
-    } catch (err) {
-      reject(new Error('Failed to send request', {
-        cause: err
-      }))
-    }
-  })
-}
-
-function toJson(data) {
-  const json = JSON.stringify(data);
-  if (json) {
-    return json
-  } else {
-    throw new Error('JSON serialization produced undefined result')
-  }
-}
-
-function fromJson(val) {
-  if (typeof val === 'object') {
-    return val
-  }
-  try {
-    return JSON.parse(val)
-  } catch (err) {
-    throw new Error('Invalid JSON', {cause: err})
-  }
 }
 
 export default {
