@@ -1,7 +1,8 @@
 import http from "node:http"
 import serverSpy from "jasmine-http-server-spy"
 import { resolve } from "path"
-import sdk, { DEFAULT_PREDICATE, NOT_ALLOWED, StyraRunAssertionError } from "../src/run-sdk.js"
+import sdk, { DEFAULT_PREDICATE } from "../src/run-sdk.js"
+import { StyraRunAssertionError } from "../src/errors.js"
 
 describe("Check", () => {
   let httpSpy
@@ -205,15 +206,14 @@ describe("Batched Check", () => {
       {path: '/fa', input: 1337}
     ]
     const expectedResult = [
-      {check: {result: true}},
-      {check: {}},
-      {check: {result: 1337}},
-      {check: {result: 'foo'}}
+      {check: {result: 1}},
+      {check: {result: 2}},
+      {check: {result: 3}},
+      {check: {result: 4}}
     ]
 
-    let requestCounter = 0
     httpSpy.getMockedUrl.and.callFake((req) => {
-      if (requestCounter++ === 0) {
+      if (req.body.items[0].path === '/do') {
         return {
           statusCode: 200,
           body: {result: expectedResult.slice(0, 3)}
@@ -416,7 +416,7 @@ describe("Allow", () => {
     })
 
     await expectAsync(client.assert(path, input))
-      .toBeRejectedWith(new StyraRunAssertionError(NOT_ALLOWED))
+      .toBeRejectedWith(new StyraRunAssertionError())
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: {input}
     }));
