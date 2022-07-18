@@ -1,9 +1,7 @@
-import Http from "http"
-import Https from "https"
 import Path from "path"
-import { ApiClient } from "./api-client.js"
-import { StyraRunError, StyraRunAssertionError, StyraRunHttpError } from "./errors.js"
-import { getBody, toJson, fromJson } from "./helpers.js"
+import {ApiClient} from "./api-client.js"
+import {StyraRunError, StyraRunAssertionError, StyraRunHttpError} from "./errors.js"
+import {getBody, toJson, fromJson} from "./helpers.js"
 
 // TODO: Add support for versioning/ETags for data API requests
 // TODO: Add support for fail-over/retry when server connection is broken
@@ -18,31 +16,15 @@ import { getBody, toJson, fromJson } from "./helpers.js"
  */
 export class Client {
   constructor({
-    host = "api-test.styra.com", 
-    port = 443, 
-    https = true, 
-    projectId, 
-    environmentId, 
-    userId, 
-    token, 
-    batchMaxItems = 20,
-    inputTransformers = {},
-    sortGateways = DEFAULT_SORT_GATEWAYS_CALLBACK
-  }) {
-    this.host = host
-    this.port = port
-    this.https = https
-    this.projectId = projectId
-    this.environmentId = environmentId
-    this.userId = userId
-    this.token = token
+                url = "https://api-test.styra.com",
+                token,
+                batchMaxItems = 20,
+                inputTransformers = {},
+                sortGateways = DEFAULT_SORT_GATEWAYS_CALLBACK
+              }) {
     this.batchMaxItems = batchMaxItems
     this.inputTransformers = inputTransformers
-    this.apiClient = new ApiClient(host, port, https)
-  }
-
-  getPathPrefix() {
-    return `/v1/projects/${this.userId}/${this.projectId}/envs/${this.environmentId}`
+    this.apiClient = new ApiClient(url, token, {sortGateways})
   }
 
   setInputTransformer(path, transformer) {
@@ -67,18 +49,10 @@ export class Client {
    */
   async check(path, input = undefined) {
     const query = input ? {input} : {}
-    const reqOpts = {
-      path: Path.join(this.getPathPrefix(), 'data', path),
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'authorization': `bearer ${this.token}`
-      }
-    }
 
     try {
       const json = toJson(query)
-      const decission = await this.apiClient.request(reqOpts, json)
+      const decission = await this.apiClient.post(Path.join('data', path), json)
       return fromJson(decission)
     } catch (err) {
       return await Promise.reject(new StyraRunError('Check failed', path, query, err))
@@ -126,18 +100,9 @@ export class Client {
         query.input = input
       }
 
-      const reqOpts = {
-        path: Path.join(this.getPathPrefix(), 'data_batch'),
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'authorization': `bearer ${this.token}`
-        }
-      }
-
       try {
         const json = toJson(query)
-        const response = await this.apiClient.request(reqOpts, json)
+        const response = await this.apiClient.post(Path.join('data_batch'), json)
         return fromJson(response)
       } catch (err) {
         throw new StyraRunError('Batched check failed', undefined, query, err)
@@ -289,16 +254,8 @@ export class Client {
    * @returns {Promise<DataResult, StyraRunError>}
    */
   async getData(path, def = undefined) {
-    const reqOpts = {
-      path: Path.join(this.getPathPrefix(), 'data', path),
-      method: 'GET',
-      headers: {
-        'authorization': `bearer ${this.token}`
-      }
-    };
-
     try {
-      const response = await this.apiClient.request(reqOpts)
+      const response = await this.apiClient.get(Path.join('data', path))
       return fromJson(response)
     } catch (err) {
       if (def && err.resp?.statusCode === 404) {
@@ -325,18 +282,9 @@ export class Client {
    * @returns {Promise<DataUpdateResult, StyraRunError>}
    */
   async putData(path, data) {
-    const reqOpts = {
-      path: Path.join(this.getPathPrefix(), 'data', path),
-      method: 'PUT',
-      headers: {
-        'content-type': 'application/json',
-        'authorization': `Bearer ${this.token}`
-      }
-    };
-
     try {
       const json = toJson(data)
-      const response = await this.apiClient.request(reqOpts, json)
+      const response = await this.apiClient.put(Path.join('data', path), json)
       return fromJson(response)
     } catch (err) {
       return await Promise.reject(new StyraRunError('PUT data request failed', path, undefined, err))
@@ -354,16 +302,8 @@ export class Client {
    * @returns {Promise<DataUpdateResult, StyraRunError>}
    */
   async deleteData(path) {
-    const reqOpts = {
-      path: Path.join(this.getPathPrefix(), 'data', path),
-      method: 'DELETE',
-      headers: {
-        'authorization': `bearer ${this.token}`
-      }
-    };
-
     try {
-      const response = await this.apiClient.request(reqOpts)
+      const response = await this.apiClient.delete(Path.join('data', path))
       return fromJson(response)
     } catch (err) {
       return await Promise.reject(new StyraRunError('DELETE data request failed', path, undefined, err))
@@ -384,6 +324,7 @@ export class Client {
    * @param response the outgoing HTTP response
    * @param {BatchCheckItemResult[]} result the result of the proxied policy query, that should be serialized and returned to the caller
    */
+
   /**
    * @callback OnProxyErrorCallback
    * @param request the incoming HTTP request
@@ -445,10 +386,6 @@ export class Client {
         onError(request, response, err)
       }
     }
-  }
-
-  getPathPrefix() {
-    return `/v1/projects/${this.userId}/${this.projectId}/envs/${this.environmentId}`
   }
 }
 
