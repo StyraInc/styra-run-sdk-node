@@ -1,4 +1,5 @@
 import http from "node:http"
+import Url from "url"
 import serverSpy from "jasmine-http-server-spy"
 import { resolve } from "path"
 import sdk, { DEFAULT_PREDICATE } from "../src/run-sdk.js"
@@ -8,23 +9,23 @@ describe("Check", () => {
   let httpSpy
 
   const port = 8082
+  const basePath = 'v1/projects/user1/proj1/envs/env1'
   const path = 'foo/allowed'
   const client = sdk.New({
-    userId: "user1",
-    projectId: "proj1",
-    evironmentId: "env1",
-    port: port,
-    host: "localhost",
-    https: false
+    url: 'http://placeholder',
+    token: 'foobar'
   })
+  client.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
   beforeAll(function(done) {
-    httpSpy = serverSpy.createSpyObj('mockServer', [{
+    httpSpy = serverSpy.createSpyObj('mockServer', [
+      {
         method: 'post',
-        url: `${client.getPathPrefix()}/data/${path}`,
+        url: `/${basePath}/data/foo/allowed`,
         handlerName: 'getMockedUrl'
       }
     ])
+
     httpSpy.server.start(8082, done)
   })
   
@@ -107,10 +108,11 @@ describe("Check", () => {
       expect(err.message).toBe('Check failed')
       expect(err.path).toBe(path)
       expect(err.query).toEqual({input})
-      expect(err.cause).toBeDefined()
-      expect(err.cause.message).toBe('Unexpected status code: 400')
-      expect(err.cause.statusCode).toBe(400)
-      expect(err.cause.body).toBe("foo bar")
+      expect(err.cause?.name).toBe('StyraRunError')
+      expect(err.cause?.message).toBe('Request failed after 1 attempt(s)')
+      expect(err.cause?.cause?.message).toBe('Unexpected status code: 400')
+      expect(err.cause?.cause?.statusCode).toBe(400)
+      expect(err.cause?.cause?.body).toBe("foo bar")
     }
   })
 
@@ -122,7 +124,6 @@ describe("Check", () => {
 
     const input = {foo: "bar"}
 
-    // Cannot use expectAsync().toBeRejectedWith(), as it doesn't allow us to assert error properties other than message
     try {
       const result = await client.check(path, input)
       fail(`Expected error, got: ${result}`)
@@ -136,26 +137,21 @@ describe("Check", () => {
   })
 })
 
-
 describe("Batched Check", () => {
   let httpSpy
 
   const port = 8082
-  const path = 'foo/allowed'
-  const clientOptions = {
-    uid: "user1",
-    pid: "proj1",
-    eid: "env1",
-    port: port,
-    host: "localhost",
-    https: false
-  }
-  const client = sdk.New(clientOptions)
+  const basePath = 'v1/projects/user1/proj1/envs/env1'
+  const client = sdk.New({
+    url: 'http://placeholder',
+    token: 'foobar'
+  })
+  client.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
   beforeAll(function(done) {
     httpSpy = serverSpy.createSpyObj('mockServer', [{
         method: 'post',
-        url: `${client.getPathPrefix()}/data_batch`,
+        url: `/${basePath}/data_batch`,
         handlerName: 'getMockedUrl'
       }
     ])
@@ -196,9 +192,10 @@ describe("Batched Check", () => {
 
   it("Successful, max allowed items reached", async () => {
     const client = sdk.New({
-      ...clientOptions,
       batchMaxItems: 3
     })
+    client.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
+
     const items = [
       {path: '/do'},
       {path: '/re', input: {subject: 'admin'}},
@@ -295,10 +292,11 @@ describe("Batched Check", () => {
       expect(err.message).toBe('Batched check failed')
       expect(err.path).toBeUndefined()
       expect(err.query).toEqual({items, input})
-      expect(err.cause).toBeDefined()
-      expect(err.cause.message).toBe('Unexpected status code: 400')
-      expect(err.cause.statusCode).toBe(400)
-      expect(err.cause.body).toBe("foo bar")
+      expect(err.cause?.name).toBe('StyraRunError')
+      expect(err.cause?.message).toBe('Request failed after 1 attempt(s)')
+      expect(err.cause?.cause?.message).toBe('Unexpected status code: 400')
+      expect(err.cause?.cause?.statusCode).toBe(400)
+      expect(err.cause?.cause?.body).toBe("foo bar")
     }
   })
 
@@ -336,20 +334,18 @@ describe("Allow", () => {
   let httpSpy
 
   const port = 8082
+  const basePath = 'v1/projects/user1/proj1/envs/env1'
   const path = 'foo/allowed'
   const client = sdk.New({
-    uid: "user1",
-    pid: "proj1",
-    eid: "env1",
-    port: port,
-    host: "localhost",
-    https: false
+    url: 'http://placeholder',
+    token: 'foobar'
   })
+  client.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
   beforeAll(function(done) {
     httpSpy = serverSpy.createSpyObj('mockServer', [{
         method: 'post',
-        url: `${client.getPathPrefix()}/data/${path}`,
+        url: `/${basePath}/data/${path}`,
         handlerName: 'getMockedUrl'
       }
     ])
@@ -441,10 +437,12 @@ describe("Allow", () => {
       expect(err.query).toEqual({input})
       expect(err.cause?.name).toBe('StyraRunError')
       expect(err.cause?.message).toBe('Check failed')
-      expect(err.cause?.cause?.name).toBe('StyraRunHttpError')
-      expect(err.cause?.cause?.message).toBe('Unexpected status code: 500')
-      expect(err.cause?.cause?.statusCode).toBe(500)
-      expect(err.cause?.cause?.body).toBe('some error happened')
+      expect(err.cause?.cause?.name).toBe('StyraRunError')
+      expect(err.cause?.cause?.message).toBe('Request failed after 1 attempt(s)')
+      expect(err.cause?.cause?.cause?.name).toBe('StyraRunHttpError')
+      expect(err.cause?.cause?.cause?.message).toBe('Unexpected status code: 500')
+      expect(err.cause?.cause?.cause?.statusCode).toBe(500)
+      expect(err.cause?.cause?.cause?.body).toBe('some error happened')
     }
   })
 })
@@ -454,15 +452,13 @@ describe("Filter allowed", () => {
   let httpSpy
 
   const port = 8082
+  const basePath = 'v1/projects/user1/proj1/envs/env1'
   const path = 'foo/allowed'
   const client = sdk.New({
-    uid: "user1",
-    pid: "proj1",
-    eid: "env1",
-    port: port,
-    host: "localhost",
-    https: false
+    url: 'http://placeholder',
+    token: 'foobar'
   })
+  client.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
   const toInput = (v, i) => { 
     return i % 2 == 0 ? {d: v} : undefined 
@@ -471,7 +467,7 @@ describe("Filter allowed", () => {
   beforeAll(function(done) {
     httpSpy = serverSpy.createSpyObj('mockServer', [{
         method: 'post',
-        url: `${client.getPathPrefix()}/data_batch`,
+        url: `/${basePath}/data_batch`,
         handlerName: 'getMockedUrl'
       }
     ])
@@ -596,22 +592,20 @@ describe("Filter allowed", () => {
 describe("Proxy", () => {
   let httpSpy
 
+  const input = {foo: 'bar'}
   const port = 8082
+  const basePath = 'v1/projects/user1/proj1/envs/env1'
   const path = 'foo/allowed'
-  const input = {foo: "bar"}
   const sdkClient = sdk.New({
-    uid: "user1",
-    pid: "proj1",
-    eid: "env1",
-    port: port,
-    host: "localhost",
-    https: false
+    url: 'http://placeholder',
+    token: 'foobar'
   })
+  sdkClient.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
   beforeAll(function(done) {
     httpSpy = serverSpy.createSpyObj('mockServer', [{
         method: 'post',
-        url: `${sdkClient.getPathPrefix()}/data_batch`,
+        url: `/${basePath}/data_batch`,
         handlerName: 'getMockedUrl'
       }
     ])
@@ -778,9 +772,12 @@ function clientRequest(port, method, path, data = undefined) {
 }
 
 async function withServer(server, port, callback) {
-  await startServer(server, port)
-  await callback(server)
-  await closeServer(server)
+  try {
+    await startServer(server, port)
+    await callback(server)
+  } finally {
+    await closeServer(server)
+  }
 }
 
 async function startServer(server, port) {

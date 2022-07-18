@@ -25,12 +25,7 @@ npm install styra-run
 import StyraRun from "styra-run"
 
 const options = {
-  https: process.env.RUN_HTTPS
-  host: process.env.RUN_HOST,
-  port: process.env.RUN_PORT !== undefined ? parseInt(process.env.RUN_PORT) : undefined,
-  projectId: process.env.RUN_PROJECT,
-  environmentId: process.env.RUN_ENVIRONMENT,
-  userId: process.env.RUN_USER,
+  https: process.env.RUN_URL
   token: process.env.RUN_TOKEN
 }
 const client = StyraRun.New(options)
@@ -180,7 +175,7 @@ import {Router} from 'express'
 
 const router = Router()
 
-router.post('/authz', client.proxy(async (req, res, input) => {
+router.post('/authz', client.proxy(async (req, res, path, input) => {
     return {
             ...input,
             subject: req.subject, // Add subject from session
