@@ -1,25 +1,27 @@
 {
   "name": "styra-run-sdk-node",
   "version": "0.0.1",
-  "description": "The Styra Run node.js SDK",
+  "description": "The Styra Run SDK for node.js",
+  "author": "Styra Inc.",
+  "license": "Apache-2.0",
   "type": "module",
   "main": "./src/run-sdk.js",
   "scripts": {
     "test": "jasmine"
   },
+  "homepage": "https://github.com/StyraInc/styra-run-sdk-node#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/StyraInc/styra-run-sdk-node.git"
   },
   "keywords": [
-    "Styra",
-    "Run",
-    "OPA",
-    "Node.js",
-    "SDK"
+    "styra",
+    "run",
+    "opa",
+    "node",
+    "sdk"
   ],
-  "author": "Styra Inc.",
-  "license": "Apache-2.0",
+  
   "bugs": {
     "url": "https://github.com/StyraInc/styra-run-sdk-node/issues"
   },
