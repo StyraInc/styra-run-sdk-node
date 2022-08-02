@@ -2,18 +2,19 @@
 
 ## How to Install
 
-In your package.json:
+On the command line:
+
+```sh
+npm install --save styra-run-sdk-node
+```
+
+or in your package.json:
 ```json
 {
     "dependencies": {
-        "styra-run": "github:StyraInc/styra-run-sdk-node#main"
+        "styra-run-sdk-node": "latest"
     }
 }
-```
-
-On the command line:
-```
-npm install styra-run
 ```
 
 ## How to Use
