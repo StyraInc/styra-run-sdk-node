@@ -2,6 +2,7 @@ import Path from "path"
 import {ApiClient} from "./api-client.js"
 import {StyraRunError, StyraRunAssertionError, StyraRunHttpError} from "./errors.js"
 import {getBody, toJson, fromJson} from "./helpers.js"
+import {Manager as RbacManager} from "./rbac-management.js"
 
 // TODO: Add support for versioning/ETags for data API requests
 // TODO: Add support for fail-over/retry when server connection is broken
@@ -20,11 +21,17 @@ export class Client {
                 token,
                 batchMaxItems = 20,
                 inputTransformers = {},
-                sortGateways = DEFAULT_SORT_GATEWAYS_CALLBACK
+                sortGateways = DEFAULT_SORT_GATEWAYS_CALLBACK,
+                eventListeners = []
               }) {
     this.batchMaxItems = batchMaxItems
     this.inputTransformers = inputTransformers
     this.apiClient = new ApiClient(url, token, {sortGateways})
+    this.eventListeners = eventListeners
+  }
+
+  async handleEvent(type, info) {
+    this.eventListeners.forEach((listener) => listener(type, info))
   }
 
   setInputTransformer(path, transformer) {
@@ -55,7 +62,7 @@ export class Client {
       const decission = await this.apiClient.post(Path.join('data', path), json)
       return fromJson(decission)
     } catch (err) {
-      return await Promise.reject(new StyraRunError('Check failed', path, query, err))
+      throw new StyraRunError('Check failed', path, query, err)
     }
   }
 
@@ -387,7 +394,15 @@ export class Client {
       }
     }
   }
+
+  manageRbac(createInput = DEFAULT_RBAC_CALLBACK) {
+    const manager = new RbacManager(this, createInput)
+    return (request, response) => {
+      manager.handle(request, response)
+    }
+  }
 }
+
 
 function DEFAULT_SORT_GATEWAYS_CALLBACK(gateways) {
   return gateways
@@ -396,6 +411,10 @@ function DEFAULT_SORT_GATEWAYS_CALLBACK(gateways) {
 export function DEFAULT_PREDICATE(decision) {
   return decision?.result === true
 }
+
+function DEFAULT_RBAC_CALLBACK(request) {
+  return input
+} 
 
 function DEFAULT_ON_PROXY_HANDLER(request, response, path, input) {
   return input
@@ -414,12 +433,7 @@ function DEFAULT_PROXY_ERROR_HANDLER(request, response, error) {
 /**
  * Construct a new `Styra Run` Client from the passed `options` dictionary.
  * Valid options are:
- * * `host`: (string) The `Styra Run` API host name
- * * `port`: (number) The `Styra Run` API port
- * * `https`: (boolean) Whether to use TLS for calls to the `Styra Run` API (default: true)
- * * `projectId`: (string) Project ID
- * * `environmentId`: (string) Environment ID
- * * `userId`: (string) User ID
+ * * `url`: (string) The `Styra Run` API URL
  * * `token`: (string) the API key (Bearer token) to use for calls to the `Styra Run` API
  * * `batchMaxItems`: (number) the maximum number of query items to send in a batch request. If the number of items exceed this number, they will be split over multiple batch requests. (default: 20)
  *
