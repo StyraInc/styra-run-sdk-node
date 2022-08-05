@@ -171,6 +171,8 @@ client.deleteData('bindings/foo/bar')
 
 ### Proxy Client-Side Policy Checks
 
+The Styra Run client can produce a HTTP request handler that proxies browser/client-side policy queries to Styra Run. This proxy is compatible with, and necessary for, the [Styra Run js SDK](https://github.com/StyraInc/styra-run-sdk-js).
+
 ```javascript
 import {Router} from 'express'
 
@@ -187,3 +189,20 @@ export default {
   router
 }
 ```
+
+The `proxy(onProxy)` function takes a callback function as argument, and returns a request handling function. The provided callback function takes as arguments the incoming HTTP `Request`, the outgoing HTTP `Response`, the `path` of the queried policy, and the, possibly incomplete, `input` document for the query. The callback must return an updated version of the provided `input` document.
+
+### RBAC Management API
+
+The Styra Run client can produce a HTTP request handler providing the RBAC management API necessary for the RBAC management widget provided by the [Styra Run js SDK](https://github.com/StyraInc/styra-run-sdk-js).
+
+```javascript
+router.all('/rbac/*', styra.manageRbac(async (req) => {
+    return {subject: req.auth.subject, tenant: req.auth.tenant}
+}))
+```
+
+The `manageRbac(createInput)` function takes a callback function as argument, and returns a request handling function. The provided callback function takes the incoming HTTP `Request` and produces an dictionary/object that must contain two attributes:
+
+* `subject`: a `string` representing the subject of the user session with which the request was made.
+* `tenant`: a `string` representing the tenant of the user session with which the request was made.
