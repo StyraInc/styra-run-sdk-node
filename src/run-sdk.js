@@ -265,7 +265,7 @@ export class Client {
       const response = await this.apiClient.get(Path.join('data', path))
       return fromJson(response)
     } catch (err) {
-      if (def && err.resp?.statusCode === 404) {
+      if (err instanceof StyraRunHttpError && err.isNotFoundStatus()) {
         return {result: def}
       }
       return Promise.reject(new StyraRunError('GET data request failed', path, undefined, err))
@@ -395,8 +395,8 @@ export class Client {
     }
   }
 
-  manageRbac(createInput = DEFAULT_RBAC_CALLBACK) {
-    const manager = new RbacManager(this, createInput)
+  manageRbac(getUsers = DEFAULT_RBAC_USERS_CALLBACK, createInput = DEFAULT_RBAC_INPUT_CALLBACK, onSetBinding=DEFAULT_RBAC_ON_SET_BINDING_CALLBACK) {
+    const manager = new RbacManager(this, getUsers, createInput, onSetBinding)
     return (request, response) => {
       manager.handle(request, response)
     }
@@ -412,8 +412,16 @@ export function DEFAULT_PREDICATE(decision) {
   return decision?.result === true
 }
 
-function DEFAULT_RBAC_CALLBACK(request) {
-  return input
+function DEFAULT_RBAC_USERS_CALLBACK(offset, limit) {
+  return []
+} 
+
+function DEFAULT_RBAC_ON_SET_BINDING_CALLBACK(id, roles) {
+  return true
+} 
+
+function DEFAULT_RBAC_INPUT_CALLBACK(request) {
+  return {}
 } 
 
 function DEFAULT_ON_PROXY_HANDLER(request, response, path, input) {

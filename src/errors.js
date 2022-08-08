@@ -45,4 +45,8 @@ export class StyraRunHttpError extends Error {
   isStyraRunHttpError() {
     return true
   }
+
+  isNotFoundStatus() {
+    return this.statusCode === 404
+  }
 }
