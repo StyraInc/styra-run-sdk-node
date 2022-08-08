@@ -331,7 +331,6 @@ export class Client {
    * @param response the outgoing HTTP response
    * @param {BatchCheckItemResult[]} result the result of the proxied policy query, that should be serialized and returned to the caller
    */
-
   /**
    * @callback OnProxyErrorCallback
    * @param request the incoming HTTP request
@@ -395,14 +394,56 @@ export class Client {
     }
   }
 
-  manageRbac(createInput = DEFAULT_RBAC_INPUT_CALLBACK, getUsers = DEFAULT_RBAC_USERS_CALLBACK, onSetBinding=DEFAULT_RBAC_ON_SET_BINDING_CALLBACK, pageSize = 0) {
+  /**
+   * Callback function that must create a dictionary representing an `input` document used for 
+   * policy queries related to RBAC management access.
+   * 
+   * The returned `indput` document should return two attributes:
+   * 
+   * * `subject`: a `string` representing the subject of the user session with which the request was made.
+   * * `tenant`: a `string` representing the tenant of the user session with which the request was made.
+   * 
+   * @callback OnRbacCreateInputCallback
+   * @param request the incoming HTTP request
+   * @param {StyraRunError} error the error generated when proxying the policy query
+   * @returns {Object<string, *>} an `input` document
+   */
+  /**
+   * Callback function that must return a list of `string` user IDs.
+   * 
+   * @callback OnRbacGetUsersCallback
+   * @param {number} offset an integer index of where in the range of users to start enumerating
+   * @param {number} limit an integer count of the number of users, starting at `offset` to enumerate
+   * @returns {string[]} a list of user IDs
+   */
+  /**
+   * A callback function that is called when a binding is about to be upserted.
+   * Must return a boolean, where `true` indicates the binding may be created, and `false`
+   * that it must not.
+   * 
+   * When called, implementations may create new users if necessary.
+   * 
+   * @callback OnRbacOnSetBindingCallback
+   * @param {string} id the id of the binding's user
+   * @param {string[]} roles the roles to apply to the binding's user
+   * @returns {boolean} `true` if the binding should be applied, `false` otherwise
+   */
+  /**
+   * Returns an HTTP API function.
+   *
+   * @param {OnRbacCreateInputCallback} createInput 
+   * @param {OnRbacGetUsersCallback} getUsers
+   * @param {OnRbacOnSetBindingCallback} onSetBinding
+   * @param {number} pageSize `integer` representing the size of each page of enumerated user bindings
+   * @returns {(Function(*, *): Promise)}
+   */
+  manageRbac(createInput = DEFAULT_RBAC_INPUT_CALLBACK, getUsers = DEFAULT_RBAC_USERS_CALLBACK, onSetBinding = DEFAULT_RBAC_ON_SET_BINDING_CALLBACK, pageSize = 0) {
     const manager = new RbacManager(this, createInput, getUsers, onSetBinding, pageSize)
     return (request, response) => {
       manager.handle(request, response)
     }
   }
 }
-
 
 function DEFAULT_SORT_GATEWAYS_CALLBACK(gateways) {
   return gateways
