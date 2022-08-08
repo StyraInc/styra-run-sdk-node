@@ -2,11 +2,12 @@ import {getBody, toJson, fromJson} from "./helpers.js"
 import { StyraRunError, StyraRunHttpError } from "./errors.js"
 
 export class Manager {
-  constructor(styraRunClient, getUsers, createInput, onSetBinding) {
+  constructor(styraRunClient, createInput, getUsers, onSetBinding, pageSize) {
     this.styraRunClient = styraRunClient
-    this.getUsers = getUsers
     this.createInput = createInput
+    this.getUsers = getUsers
     this.onSetBinding = onSetBinding
+    this.pageSize = Math.max(pageSize, 0)
   }
 
   async getRoles(input) {
@@ -20,10 +21,15 @@ export class Manager {
     return roles
   }
 
-  async getBindings(input) {
+  async getBindings(input, page) {
     await this.styraRunClient.assert('rbac/manage/allow', input)
 
-    const users = this.getUsers()
+    let offset = 0
+    let limit = this.pageSize
+    if (page) {
+      offset = Math.max(page - 1, 0) * this.pageSize
+    }
+    const users = this.getUsers(offset, limit)
 
     const bindings = await Promise.all(users.map(async (id) => {
       const roles = await this.styraRunClient.getData(`rbac/user_bindings/${input.tenant}/${id}`, [])
@@ -58,7 +64,8 @@ export class Manager {
       if (request.path.endsWith('/roles') && request.method === 'GET') {
         responseBody = await this.getRoles(input)
       } else if (request.path.endsWith('/user_bindings') && request.method === 'GET') {
-        responseBody = await this.getBindings(input)
+        const page = request.query?.page ? parseInt(request.query.page) : undefined
+        responseBody = await this.getBindings(input, page)
       } else if (request.path.endsWith('/user_bindings') && request.method === 'PUT') {
         const body = await getBody(request)
         const bindings = await sanitizeBindings(fromJson(body), this.onSetBinding)

@@ -395,8 +395,8 @@ export class Client {
     }
   }
 
-  manageRbac(getUsers = DEFAULT_RBAC_USERS_CALLBACK, createInput = DEFAULT_RBAC_INPUT_CALLBACK, onSetBinding=DEFAULT_RBAC_ON_SET_BINDING_CALLBACK) {
-    const manager = new RbacManager(this, getUsers, createInput, onSetBinding)
+  manageRbac(createInput = DEFAULT_RBAC_INPUT_CALLBACK, getUsers = DEFAULT_RBAC_USERS_CALLBACK, onSetBinding=DEFAULT_RBAC_ON_SET_BINDING_CALLBACK, pageSize = 0) {
+    const manager = new RbacManager(this, createInput, getUsers, onSetBinding, pageSize)
     return (request, response) => {
       manager.handle(request, response)
     }
