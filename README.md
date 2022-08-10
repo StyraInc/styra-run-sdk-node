@@ -215,8 +215,8 @@ The `manageRbac(createInput, getUsers, onSetBinding, pageSize)` function returns
 
 The RBAC API exposes the following endpoints:
 
-| Path                        | Method | Description |
-|-----------------------------|--------|-------------|
-| `<API route>/roles`         | `GET`  | Get a list of available roles. Returns a json list of strings; e.g. `["ADMIN","VIEWER"]`. |
-| `<API route>/user_bindings` | `GET`  | Get user to role bindings. Returns a list of dictionaries, where each entry has two attributes: the `id` of the user; and their `roles`, as a list of role string identifiers; e.g. `[{"id": "alice", "roles": ["ADMIN"]}, {"id": "bob", "roles": ["VIEWER"]}]`. `GET` requests to this endpoint can include the `page` query attribute; an `integer` indicating what page of bindings to enumerate. The page size is defined when creating the API request handler on the server by calling `manageRbac`. |
-| `<API route>/user_bindings` | `PUT`  | Sets the role bindings of one or more users. The request body must be a json list of dictionaries where each entry has two attributes: the `id` of the user; and their `roles`, as a list of role string identifiers; e.g. `[{"id": "alice", "roles": ["ADMIN"]}, {"id": "bob", "roles": ["VIEWER"]}]`. If `roles` is ommitted, this value will default to the empty lis `[]`. |
+| Path                             | Method | Description |
+|----------------------------------|--------|-------------|
+| `<API route>/roles`              | `GET`  | Get a list of available roles. Returns a json list of strings; e.g. `["ADMIN","VIEWER"]`. |
+| `<API route>/user_bindings`      | `GET`  | Get user to role bindings. Returns a list of dictionaries, where each entry has two attributes: the `id` of the user; and their `roles`, as a list of role string identifiers; e.g. `[{"id": "alice", "roles": ["ADMIN"]}, {"id": "bob", "roles": ["VIEWER"]}]`. `GET` requests to this endpoint can include the `page` query attribute; an `integer` indicating what page of bindings to enumerate. The page size is defined when creating the API request handler on the server by calling `manageRbac`. |
+| `<API route>/user_bindings/<id>` | `PUT`  | Sets the role bindings of a user, where the `<id>` path component is the ID of the user. The request body must be a json list string role identifiers; e.g. `['ADMIN', 'VIEWER']`.
