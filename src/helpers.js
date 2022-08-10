@@ -34,3 +34,43 @@ export function fromJson(val) {
     throw new Error('Invalid JSON', {cause: err})
   }
 }
+
+export function pathEndsWith(url, requiredTail) {
+  const components = url.pathname.split('/')
+    .filter((e) => e.length > 0)
+  if (requiredTail.length > components.length) {
+    return false
+  }
+
+  const tailStart = components.length - requiredTail.length
+  const pathTail = components.slice(tailStart)
+
+  for (let i = 0; i < requiredTail.length; i++) { 
+    const required = requiredTail[i]
+    if (required !== '*' && required !== pathTail[i]) {
+      return false
+    }
+  }
+
+  return true
+}
+
+export function parsePathParameters(url, expectedTail) {
+  const components = url.pathname.split('/')
+  if (expectedTail.length > components.length) {
+    return {}
+  }
+
+  const tailStart = components.length - expectedTail.length
+  const pathTail = components.slice(tailStart)
+  const parameters = {}
+  
+  for (let i = 0; i < expectedTail.length; i++) { 
+    const expected = expectedTail[i]
+    if (expected.startsWith(':')) {
+      parameters[expected.slice(1)] = pathTail[i]
+    }
+  }
+
+  return parameters
+}

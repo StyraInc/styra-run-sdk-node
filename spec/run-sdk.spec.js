@@ -1,9 +1,9 @@
 import http from "node:http"
 import Url from "url"
 import serverSpy from "jasmine-http-server-spy"
-import { resolve } from "path"
 import sdk, { DEFAULT_PREDICATE } from "../src/run-sdk.js"
 import { StyraRunAssertionError } from "../src/errors.js"
+import { clientRequest, withServer } from "./helpers.js"
 
 describe("Check", () => {
   let httpSpy
@@ -108,11 +108,11 @@ describe("Check", () => {
       expect(err.message).toBe('Check failed')
       expect(err.path).toBe(path)
       expect(err.query).toEqual({input})
-      expect(err.cause?.name).toBe('StyraRunError')
-      expect(err.cause?.message).toBe('Request failed after 1 attempt(s)')
-      expect(err.cause?.cause?.message).toBe('Unexpected status code: 400')
-      expect(err.cause?.cause?.statusCode).toBe(400)
-      expect(err.cause?.cause?.body).toBe("foo bar")
+      expect(err.cause?.name).toBe('StyraRunHttpError')
+      expect(err.cause?.message).toBe('Unexpected status code: 400')
+      expect(err.cause?.statusCode).toBe(400)
+      expect(err.cause?.attempts).toBe(1)
+      expect(err.cause?.body).toBe("foo bar")
     }
   })
 
@@ -292,11 +292,11 @@ describe("Batched Check", () => {
       expect(err.message).toBe('Batched check failed')
       expect(err.path).toBeUndefined()
       expect(err.query).toEqual({items, input})
-      expect(err.cause?.name).toBe('StyraRunError')
-      expect(err.cause?.message).toBe('Request failed after 1 attempt(s)')
-      expect(err.cause?.cause?.message).toBe('Unexpected status code: 400')
-      expect(err.cause?.cause?.statusCode).toBe(400)
-      expect(err.cause?.cause?.body).toBe("foo bar")
+      expect(err.cause?.name).toBe('StyraRunHttpError')
+      expect(err.cause?.message).toBe('Unexpected status code: 400')
+      expect(err.cause?.statusCode).toBe(400)
+      expect(err.cause?.attempts).toBe(1)
+      expect(err.cause?.body).toBe("foo bar")
     }
   })
 
@@ -437,12 +437,11 @@ describe("Allow", () => {
       expect(err.query).toEqual({input})
       expect(err.cause?.name).toBe('StyraRunError')
       expect(err.cause?.message).toBe('Check failed')
-      expect(err.cause?.cause?.name).toBe('StyraRunError')
-      expect(err.cause?.cause?.message).toBe('Request failed after 1 attempt(s)')
-      expect(err.cause?.cause?.cause?.name).toBe('StyraRunHttpError')
-      expect(err.cause?.cause?.cause?.message).toBe('Unexpected status code: 500')
-      expect(err.cause?.cause?.cause?.statusCode).toBe(500)
-      expect(err.cause?.cause?.cause?.body).toBe('some error happened')
+      expect(err.cause?.cause?.name).toBe('StyraRunHttpError')
+      expect(err.cause?.cause?.message).toBe('Unexpected status code: 500')
+      expect(err.cause?.cause?.statusCode).toBe(500)
+      expect(err.cause?.cause?.attempts).toBe(1)
+      expect(err.cause?.cause?.body).toBe('some error happened')
     }
   })
 })
@@ -737,72 +736,6 @@ describe("Proxy", () => {
     })
   })
 })
-
-function clientRequest(port, method, path, data = undefined) {
-  const options = {
-    port,
-    path,
-    method,
-    host: 'localhost'
-  }
-
-  return new Promise((resolve, reject) => {
-    const req = http.request(options, (response) => {
-      let body = ''
-
-      //another chunk of data has been received
-      response.on('data', (chunk) => {
-        body += chunk
-      })
-
-      //the whole response has been received
-      response.on('end', () => {
-        resolve({response, body})
-      })
-    }).on('error', (err) => {
-      reject(new Error('Failed to send request', {
-        cause: err
-      }))
-    });
-    if (data) {
-      req.write(data)
-    }
-    req.end()
-  })
-}
-
-async function withServer(server, port, callback) {
-  try {
-    await startServer(server, port)
-    await callback(server)
-  } finally {
-    await closeServer(server)
-  }
-}
-
-async function startServer(server, port) {
-  await new Promise((resolve, reject) => {
-    server.listen(8081, (err) => {
-      if (err) {
-        reject(err)
-      } else {
-        resolve()
-      }
-    })
-  })
-}
-
-async function closeServer(server) {
-  await new Promise((resolve, reject) => {
-    server.close((err) => {
-      if (err) {
-        reject(err)
-      } else {
-        resolve()
-      }
-    })
-  })
-}
 
 function toProxyRequestBody(path, input) {
   return [{path, input}]

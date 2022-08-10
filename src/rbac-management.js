@@ -1,5 +1,11 @@
-import {getBody, toJson, fromJson} from "./helpers.js"
-import { StyraRunError, StyraRunHttpError } from "./errors.js"
+import Url from "url"
+import {getBody, toJson, fromJson, pathEndsWith, parsePathParameters} from "./helpers.js"
+import {StyraRunError, StyraRunHttpError} from "./errors.js"
+import path from "path"
+
+const AUTHZ_PATH = 'rbac/manage/allow'
+const ROLES_PATH = 'rbac/roles'
+const BINDINGS_PATH_PREFIX = 'rbac/user_bindings'
 
 export class Manager {
   constructor(styraRunClient, createInput, getUsers, onSetBinding, pageSize) {
@@ -11,9 +17,9 @@ export class Manager {
   }
 
   async getRoles(input) {
-    await this.styraRunClient.assert('rbac/manage/allow', input)
+    await this.styraRunClient.assert(AUTHZ_PATH, input)
 
-    const roles = await this.styraRunClient.check('rbac/roles', input)
+    const roles = await this.styraRunClient.check(ROLES_PATH, input)
       .then(resp => resp.result)
 
     this.styraRunClient.handleEvent('rbac-get-roles', {input, roles})
@@ -22,7 +28,7 @@ export class Manager {
   }
 
   async getBindings(input, page) {
-    await this.styraRunClient.assert('rbac/manage/allow', input)
+    await this.styraRunClient.assert(AUTHZ_PATH, input)
 
     let offset = 0
     let limit = this.pageSize
@@ -32,7 +38,7 @@ export class Manager {
     const users = this.getUsers(offset, limit)
 
     const bindings = await Promise.all(users.map(async (id) => {
-      const roles = await this.styraRunClient.getData(`rbac/user_bindings/${input.tenant}/${id}`, [])
+      const roles = await this.styraRunClient.getData(`${BINDINGS_PATH_PREFIX}/${input.tenant}/${id}`, [])
         .then(resp => resp.result)
       return {id, roles}
     }))
@@ -43,33 +49,39 @@ export class Manager {
   }
 
   // TODO: Take a dictionary (list?) of username->roles bindings
-  async setBindings(bindings, input) {
-    await this.styraRunClient.assert('rbac/manage/allow', input)
+  async setBinding(binding, input) {
+    await this.styraRunClient.assert(AUTHZ_PATH, input)
 
-    await Promise.allSettled(bindings.map(async (binding) => {
-      try {
-        await this.styraRunClient.putData('rbac/user_bindings/' + input.tenant + '/' + binding.id, binding.roles ?? [])
-        await this.styraRunClient.handleEvent('rbac-set-binding', {binding, input})
-      } catch (err) {
-        await this.styraRunClient.handleEvent('rbac-set-binding', {binding, input, err})
-      }
-    }))
+    try {
+      await this.styraRunClient.putData(`${BINDINGS_PATH_PREFIX}/${input.tenant}/${binding.id}`, binding.roles ?? [])
+      await this.styraRunClient.handleEvent('rbac-set-binding', {binding, input})
+    } catch (err) {
+      await this.styraRunClient.handleEvent('rbac-set-binding', {binding, input, err})
+      throw new BackendError('Bunding update failed', cause)
+    }
   }
 
   async handle(request, response) {
     let responseBody
     try {
       const input = await this.createInput(request)
+      const url = Url.parse(request.url)
 
-      if (request.path.endsWith('/roles') && request.method === 'GET') {
+      if (request.method === 'GET' && pathEndsWith(url, ['roles'])) {
         responseBody = await this.getRoles(input)
-      } else if (request.path.endsWith('/user_bindings') && request.method === 'GET') {
-        const page = request.query?.page ? parseInt(request.query.page) : undefined
+      } else if (request.method === 'GET' && pathEndsWith(url, ['user_bindings'])) {
+        let page
+        if (url.query) {
+          const searchParams = new URLSearchParams(url.query)
+          const pageStr = searchParams.get('page')
+          page = pageStr ? parseInt(pageStr) : undefined
+        }
         responseBody = await this.getBindings(input, page)
-      } else if (request.path.endsWith('/user_bindings') && request.method === 'PUT') {
+      } else if (request.method === 'PUT' && pathEndsWith(url, ['user_bindings', '*'])) {
+        const params = parsePathParameters(url, ['user_bindings', ':id'])
         const body = await getBody(request)
-        const bindings = await sanitizeBindings(fromJson(body), this.onSetBinding)
-        responseBody = await this.setBindings(bindings, input)
+        const binding = await sanitizeBinding(params.id, fromJson(body), this.onSetBinding)
+        responseBody = await this.setBinding(binding, input)
       } else {
         response.writeHead(404, {'Content-Type': 'text/plain'})
         response.end('Not Found')
@@ -105,26 +117,23 @@ class InvalidInputError extends Error {
   }
 }
 
-async function sanitizeBindings(data, onSetBinding) {
+class BackendError extends Error {
+  constructor(message, cause) {
+    super(message, cause)
+  }
+}
+
+
+async function sanitizeBinding(id, data, onSetBinding) {
   if (!Array.isArray(data)) {
-    throw new InvalidInputError('Bindings is not an array')
+    throw new InvalidInputError('Binding data is not an array')
   }
 
-  return await Promise.all(data.map(async (entry, i) => {
-    const id = entry.id
-    if (typeof id !== "string") {
-      throw new InvalidInputError(`id is not a string on binding ${i}`)
-    }
+  const roles = data ?? []
 
-    const roles = entry.roles ?? []
-    if (!Array.isArray(roles)) {
-      throw new InvalidInputError(`roles is not an array on binding ${i}`)
-    }
+  if (await onSetBinding(id, roles) !== true) {
+    throw new InvalidInputError(`Binding rejected`)
+  }
 
-    if (await onSetBinding(id, roles) !== true) {
-      throw new InvalidInputError(`binding ${i} rejected`)
-    }
-
-    return {id, roles}
-  }))
+  return {id, roles}
 }

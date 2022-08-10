@@ -319,22 +319,22 @@ export class Client {
 
   /**
    * @callback OnProxyCallback
-   * @param request the incoming HTTP request
-   * @param response the outgoing HTTP response
+   * @param {http.IncomingMessage} request the incoming HTTP request
+   * @param {http.OutgoingMessage} response the outgoing HTTP response
    * @param {string} path the path to the policy rule being queried
    * @param {*} input the input document/value for the policy query
    * @returns the input document/value that should be used for the proxied policy query
    */
   /**
    * @callback OnProxyDoneCallback
-   * @param request the incoming HTTP request
-   * @param response the outgoing HTTP response
+   * @param {http.IncomingMessage} request the incoming HTTP request
+   * @param {http.OutgoingMessage} response the outgoing HTTP response
    * @param {BatchCheckItemResult[]} result the result of the proxied policy query, that should be serialized and returned to the caller
    */
   /**
    * @callback OnProxyErrorCallback
-   * @param request the incoming HTTP request
-   * @param response the outgoing HTTP response
+   * @param {http.IncomingMessage} request the incoming HTTP request
+   * @param {http.OutgoingMessage} response the outgoing HTTP response
    * @param {StyraRunError} error the error generated when proxying the policy query
    */
   /**
@@ -404,7 +404,7 @@ export class Client {
    * * `tenant`: a `string` representing the tenant of the user session with which the request was made.
    * 
    * @callback OnRbacCreateInputCallback
-   * @param request the incoming HTTP request
+   * @param {http.IncomingMessage} request the incoming HTTP request
    * @param {StyraRunError} error the error generated when proxying the policy query
    * @returns {Object<string, *>} an `input` document
    */
