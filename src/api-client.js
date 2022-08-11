@@ -71,7 +71,7 @@ export class ApiClient {
   async requestWithRetry(options, data = undefined, attempt = 1) {
     const gateways = await this.getGateways()
     if (!gateways || gateways.length === 0) {
-      throw new StyraRunError('No gateways', undefined, undefined, err)
+      throw new StyraRunError('No gateways')
     }
     const maxRetries = Math.min(this.maxRetries, gateways.length - 1)
 
@@ -116,18 +116,14 @@ export class ApiClient {
                 response.statusCode, body));
           }
         }).on('error', (err) => {
-          reject(new Error('Failed to send request', {
-            cause: err
-          }))
+          reject(new StyraRunError('Failed to send request', err))
         })
         if (data) {
           req.write(data);
         }
         req.end()
       } catch (err) {
-        reject(new Error('Failed to send request', {
-          cause: err
-        }))
+        reject(new StyraRunError('Failed to send request', err))
       }
     })
   }
@@ -146,15 +142,8 @@ export class ApiClient {
     }
 
     const body = await this.request(options)
-    const gateways = JSON.parse(body)
-    const sortedGateways = await this.sortGateways(gateways?.result ?? [])
-
-    if (!sortedGateways || sortedGateways.length === 0) {
-      throw new StyraRunError('No gateways')
-    }
-
-    this.gateways = sortedGateways
-      .map((gateway) => {
+    const result = JSON.parse(body)?.result || []
+    const gateways = result.map((gateway) => {
         try {
           return Url.parse(gateway.gateway_url)
         } catch (err) {
@@ -162,6 +151,14 @@ export class ApiClient {
         }
       })
       .filter((entry) => entry !== undefined)
+
+    const sortedGateways = await this.sortGateways(gateways)
+
+    if (!sortedGateways || sortedGateways.length === 0) {
+      throw new StyraRunError('No gateways')
+    }
+
+    this.gateways = sortedGateways
     return this.gateways
   }
 }

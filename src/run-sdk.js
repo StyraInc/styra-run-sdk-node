@@ -30,7 +30,7 @@ export class Client {
     this.eventListeners = eventListeners
   }
 
-  async handleEvent(type, info) {
+  async signalEvent(type, info) {
     this.eventListeners.forEach((listener) => listener(type, info))
   }
 
@@ -60,9 +60,11 @@ export class Client {
     try {
       const json = toJson(query)
       const decission = await this.apiClient.post(Path.join('data', path), json)
+      this.signalEvent('query', {path, query, decission})
       return fromJson(decission)
     } catch (err) {
-      throw new StyraRunError('Check failed', path, query, err)
+      this.signalEvent('query', {path, query, err})
+      throw new StyraRunError('Query failed', err)
     }
   }
 
@@ -97,16 +99,14 @@ export class Client {
    * @returns {Promise<undefined, StyraRunError|StyraRunAssertionError>}
    */
   async check(path, input = undefined, predicate = DEFAULT_PREDICATE) {
-    let result
     try {
       const decission = await this.query(path, input)
-      return predicate(decission)
+      const allowed = await predicate(decission)
+      this.signalEvent('check', {allowed, path, input})
+      return allowed
     } catch (err) {
-      throw new StyraRunError('Allow check failed', path, {input}, err)
-    }
-
-    if (!result) {
-      throw new StyraRunAssertionError(path, {input})
+      this.signalEvent('check', {path, input, err})
+      throw new StyraRunError('Check failed', err)
     }
   }
 
@@ -138,10 +138,17 @@ export class Client {
    * @see {@link check}
    */
   async assert(path, input = undefined, predicate = DEFAULT_PREDICATE) {
-    let result = await this.check(path, input, predicate)
-
-    if (!result) {
-      throw new StyraRunAssertionError(path, {input})
+    let asserted = false
+    try {
+      asserted = await this.check(path, input, predicate)
+      this.signalEvent('assert', {asserted, path, input})
+    } catch (err) {
+      this.signalEvent('assert', {asserted, path, input, err})
+      throw new StyraRunError('Assert failed', err)
+    }
+    
+    if (!asserted) {
+      throw new StyraRunAssertionError()
     }
   }
 
@@ -210,18 +217,21 @@ export class Client {
       }
 
       try {
-        const json = toJson(query)
-        const response = await this.apiClient.post(Path.join('data_batch'), json)
-        return fromJson(response)
+        const jsonQuery = toJson(query)
+        const jsonResponse = await this.apiClient.post(Path.join('data_batch'), jsonQuery)
+        const {result} = fromJson(jsonResponse)
+        return result
       } catch (err) {
-        throw new StyraRunError('Batched check failed', undefined, query, err)
+        this.signalEvent('batch-query', {items, input, err})
+        throw new StyraRunError('Batched check failed', err)
       }
     })
 
     const decisionChunks = await Promise.all(queries)
     const decisions = decisionChunks
-      .map((decision) => decision.result ?? [])
+      .map((result) => (result !== undefined ? result : []))
       .flat(1)
+    this.signalEvent('batch-query', {items, input, decisions})
     return decisions
   }
 
@@ -232,10 +242,11 @@ export class Client {
    * Returns a `Promise` that resolves to a filtered version of the provided `list`.
    * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
    *
-   * @param path the path to the policy rule to query
-   * @param list the list to filter
-   * @param toInput optional, a callback that, given a list entry and an index, should return an `input` document
-   * @param toPath optional, a callback that, given a list entry and an index, should return a `path` string. If provided, overrides the global `'path'` argument
+   * @param {*[]} list the list to filter
+   * @param {FilterPredicateCallback} predicate the predicate callback to filter each list entry by given a policy decision
+   * @param {string|undefined} path the path to the policy rule to query
+   * @param {FilterInputCallback} toInput optional, a callback that, given a list entry and an index, should return an `input` document
+   * @param {FilterPathCallback} toPath optional, a callback that, given a list entry and an index, should return a `path` string. If provided, overrides the global `'path'` argument
    * @returns {Promise<*[], StyraRunError>}
    */
   async filter(list, predicate, path = undefined, toInput = undefined, toPath = undefined) {
@@ -260,23 +271,34 @@ export class Client {
       return item
     }
 
-    let resultList
+    let decisionList
     try {
       const items = list.map(transformer)
-      resultList = await this.batchQuery(items)
+      decisionList = await this.batchQuery(items)
     } catch (err) {
-      throw new StyraRunError('Allow filtering failed', path, undefined, err)
+      const err2 = new StyraRunError('Filtering failed', err)
+      this.signalEvent('filter', {list, decisionList, path, err: err2})
+      throw err2
     }
 
-    if (resultList === undefined || resultList.length !== list.length) {
-      throw new StyraRunError(`Returned result list size (${resultList?.length}) not equal to provided list size (${list.length})`,
-        path)
+    if (decisionList === undefined || decisionList.length !== list.length) {
+      const err = new StyraRunError(`Returned decision list size (${decisionList?.length}) not equal to provided list size (${list.length})`)
+      this.signalEvent('filter', {list, decisionList, path, err})
+      throw err
     }
 
     try {
-      return list.filter((_, i) => predicate(resultList[i]?.check))
+      const filteredList = []
+      list.forEach(async (v, i) => { 
+        if(await predicate(decisionList[i]?.check)) {
+          filteredList.push(v)
+        }
+      })
+      this.signalEvent('filter', {list, decisionList, filteredList, path})
+      return filteredList
     } catch (err) {
-      throw new StyraRunError('Allow filtering failed', path, undefined, err)
+      this.signalEvent('filter', {list, decisionList, path})
+      throw new StyraRunError('Allow filtering failed', err)
     }
   }
 
@@ -302,7 +324,7 @@ export class Client {
       if (err instanceof StyraRunHttpError && err.isNotFoundStatus()) {
         return {result: def}
       }
-      return Promise.reject(new StyraRunError('GET data request failed', path, undefined, err))
+      throw new StyraRunError('GET data request failed', err)
     }
   }
 
@@ -328,7 +350,7 @@ export class Client {
       const response = await this.apiClient.put(Path.join('data', path), json)
       return fromJson(response)
     } catch (err) {
-      return await Promise.reject(new StyraRunError('PUT data request failed', path, undefined, err))
+      throw new StyraRunError('PUT data request failed', err)
     }
   }
 
@@ -347,7 +369,7 @@ export class Client {
       const response = await this.apiClient.delete(Path.join('data', path))
       return fromJson(response)
     } catch (err) {
-      return await Promise.reject(new StyraRunError('DELETE data request failed', path, undefined, err))
+      throw new StyraRunError('DELETE data request failed', err)
     }
   }
 
@@ -389,15 +411,15 @@ export class Client {
         }
 
         const body = await getBody(request)
-        const json = fromJson(body)
+        const queries = fromJson(body)
 
-        if (!Array.isArray(json)) {
+        if (!Array.isArray(queries)) {
           response.writeHead(400, {'Content-Type': 'text/html'})
           response.end('invalid proxy request')
           return
         }
 
-        const batchItemPromises = json.map((query, i) => {
+        const batchItemPromises = queries.map((query, i) => {
           return new Promise(async (resolve, reject) => {
             const path = query.path
             if (path === undefined) {
@@ -412,7 +434,7 @@ export class Client {
               }
               resolve({path, input})
             } catch (err) {
-              reject(new StyraRunError('Error transforming input', path, {input: query.input}, err))
+              reject(new StyraRunError('Error transforming input', path, err))
             }
           })
         })
@@ -421,8 +443,10 @@ export class Client {
         const batchResult = await this.batchQuery(batchItems)
         const result = (batchResult ?? []).map((item) => item.check ?? {})
 
+        this.signalEvent('proxy', {queries, result})
         onDone(request, response, result)
       } catch (err) {
+        this.signalEvent('proxy', {err})
         onError(request, response, err)
       }
     }

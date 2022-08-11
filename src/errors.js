@@ -4,11 +4,9 @@ export const NOT_ALLOWED = 'Not allowed!'
  * General Styra Run Client {@link Error}.
  */
 export class StyraRunError extends Error {
-  constructor(message, path = undefined, query = undefined, cause = undefined) {
-    super(message)
+  constructor(message, cause = undefined) {
+    super(cause?.message ? `${message}: ${cause.message}` : message)
     this.name = "StyraRunError"
-    this.path = path
-    this.query = query
     this.cause = cause
   }
 
@@ -21,8 +19,8 @@ export class StyraRunError extends Error {
  * Error for when the {@link Client#assert} {@link AssertPredicate `predicate`} rejects a policy decision.
  */
 export class StyraRunAssertionError extends StyraRunError {
-  constructor(path = undefined, query = undefined) {
-    super(NOT_ALLOWED, path, query)
+  constructor() {
+    super(NOT_ALLOWED)
     this.name = "StyraRunAssertionError"
   }
 
@@ -34,7 +32,7 @@ export class StyraRunAssertionError extends StyraRunError {
 /**
  * Styra Run Client HTTP {@link Error}.
  */
-export class StyraRunHttpError extends Error {
+export class StyraRunHttpError extends StyraRunError {
   constructor(message, statusCode, body) {
     super(message)
     this.name = "StyraRunHttpError"

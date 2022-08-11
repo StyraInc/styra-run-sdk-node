@@ -22,7 +22,7 @@ export class Manager {
     const roles = await this.styraRunClient.query(ROLES_PATH, input)
       .then(resp => resp.result)
 
-    this.styraRunClient.handleEvent('rbac-get-roles', {input, roles})
+    this.styraRunClient.signalEvent('rbac-get-roles', {input, roles})
 
     return roles
   }
@@ -43,7 +43,7 @@ export class Manager {
       return {id, roles}
     }))
 
-    this.styraRunClient.handleEvent('rbac-get-bindings', {input, bindings})
+    this.styraRunClient.signalEvent('rbac-get-bindings', {input, bindings})
 
     return bindings
   }
@@ -54,9 +54,9 @@ export class Manager {
 
     try {
       await this.styraRunClient.putData(`${BINDINGS_PATH_PREFIX}/${input.tenant}/${binding.id}`, binding.roles ?? [])
-      await this.styraRunClient.handleEvent('rbac-set-binding', {binding, input})
+      this.styraRunClient.signalEvent('rbac-set-binding', {binding, input})
     } catch (err) {
-      await this.styraRunClient.handleEvent('rbac-set-binding', {binding, input, err})
+      this.styraRunClient.signalEvent('rbac-set-binding', {binding, input, err})
       throw new BackendError('Bunding update failed', cause)
     }
   }
@@ -96,7 +96,7 @@ export class Manager {
         response.end()
       }
     } catch (err) {
-      this.styraRunClient.handleEvent('rbac', {err})
+      this.styraRunClient.signalEvent('rbac', {err})
       if (err instanceof StyraRunError) {
         response.writeHead(403, {'Content-Type': 'text/plain'})
         response.end('Forbidden')
