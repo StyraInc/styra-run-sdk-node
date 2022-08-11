@@ -5,7 +5,7 @@ import sdk, { DEFAULT_PREDICATE } from "../src/run-sdk.js"
 import { StyraRunAssertionError } from "../src/errors.js"
 import { clientRequest, withServer } from "./helpers.js"
 
-describe("Check", () => {
+describe("Query", () => {
   let httpSpy
 
   const port = 8082
@@ -46,7 +46,7 @@ describe("Check", () => {
       body: expectedResult
     })
 
-    const result = await client.check(path)
+    const result = await client.query(path)
     expect(result).toEqual(expectedResult)
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: {}
@@ -61,7 +61,7 @@ describe("Check", () => {
       body: expectedResult
     })
 
-    const result = await client.check(path, input)
+    const result = await client.query(path, input)
     expect(result).toEqual(expectedResult)
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: {input}
@@ -76,7 +76,7 @@ describe("Check", () => {
       body: expectedResult
     })
 
-    const result = await client.check(path, input)
+    const result = await client.query(path, input)
     expect(result).toEqual(expectedResult)
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: {input}
@@ -88,7 +88,7 @@ describe("Check", () => {
       statusCode: 200
     })
 
-    const result = await client.check(path)
+    const result = await client.query(path)
     expect(result).toEqual({})
   })
 
@@ -102,7 +102,7 @@ describe("Check", () => {
 
     // Cannot use expectAsync().toBeRejectedWith(), as it doesn't allow us to assert error properties other than message
     try {
-      const result = await client.check(path, input)
+      const result = await client.query(path, input)
       fail(`Expected error, got: ${result}`)
     } catch (err) {
       expect(err.message).toBe('Check failed')
@@ -125,7 +125,7 @@ describe("Check", () => {
     const input = {foo: "bar"}
 
     try {
-      const result = await client.check(path, input)
+      const result = await client.query(path, input)
       fail(`Expected error, got: ${result}`)
     } catch (err) {
       expect(err.message).toBe('Check failed')
@@ -137,7 +137,7 @@ describe("Check", () => {
   })
 })
 
-describe("Batched Check", () => {
+describe("Batched Query", () => {
   let httpSpy
 
   const port = 8082
@@ -183,7 +183,7 @@ describe("Batched Check", () => {
       body: {result: expectedResult}
     })
 
-    const result = await client.batchCheck(items)
+    const result = await client.batchQuery(items)
     expect(result).toEqual(expectedResult)
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: {items}
@@ -223,7 +223,7 @@ describe("Batched Check", () => {
       }
     })
 
-    const result = await client.batchCheck(items)
+    const result = await client.batchQuery(items)
     expect(result).toEqual(expectedResult)
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: {items: items.slice(0, 3)}
@@ -253,7 +253,7 @@ describe("Batched Check", () => {
       body: {result: expectedResult}
     })
 
-    const result = await client.batchCheck(items, input)
+    const result = await client.batchQuery(items, input)
     expect(result).toEqual(expectedResult)
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: {items, input}
@@ -266,7 +266,7 @@ describe("Batched Check", () => {
       body: [] // jasmine-http won't allow us to define no body
     })
 
-    const result = await client.batchCheck([])
+    const result = await client.batchQuery([])
     expect(result).toEqual([])
   })
 
@@ -286,7 +286,7 @@ describe("Batched Check", () => {
     })
 
     try {
-      const result = await client.batchCheck(items, input)
+      const result = await client.batchQuery(items, input)
       fail(`Expected error, got: ${result}`)
     } catch (err) {
       expect(err.message).toBe('Batched check failed')
@@ -317,7 +317,7 @@ describe("Batched Check", () => {
 
     // Cannot use expectAsync().toBeRejectedWith(), as it doesn't allow us to assert error properties other than message
     try {
-      const result = await client.batchCheck(items, input)
+      const result = await client.batchQuery(items, input)
       fail(`Expected error, got: ${result}`)
     } catch (err) {
       expect(err.message).toBe('Batched check failed')
@@ -329,8 +329,107 @@ describe("Batched Check", () => {
   })
 })
 
+describe("Check", () => {
+  let httpSpy
 
-describe("Allow", () => {
+  const port = 8082
+  const basePath = 'v1/projects/user1/proj1/envs/env1'
+  const path = 'foo/allowed'
+  const client = sdk.New({
+    url: 'http://placeholder',
+    token: 'foobar'
+  })
+  client.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
+
+  beforeAll(function(done) {
+    httpSpy = serverSpy.createSpyObj('mockServer', [{
+        method: 'post',
+        url: `/${basePath}/data/${path}`,
+        handlerName: 'getMockedUrl'
+      }
+    ])
+    httpSpy.server.start(8082, done)
+  })
+  
+  afterAll(function(done) {
+    httpSpy.server.stop(done)
+  })
+
+  afterEach(function() {
+    httpSpy.getMockedUrl.calls.reset();
+  })
+
+  it("Successful, no input", async () => {
+    httpSpy.getMockedUrl.and.returnValue({
+      statusCode: 200,
+      body: {result: true}
+    })
+
+
+    await expectAsync(client.check(path)).toBeResolvedTo(true)
+    expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
+      body: {}
+    }));
+  })
+
+  it("Successful, with input", async () => {
+    const expectedResult = {result: true}
+    const input = {foo: "bar"}
+    httpSpy.getMockedUrl.and.returnValue({
+      statusCode: 200,
+      body: expectedResult
+    })
+
+    await expectAsync(client.check(path, input)).toBeResolvedTo(true)
+    expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
+      body: {input}
+    }));
+  })
+
+  it("Rejected", async () => {
+    const expectedResult = {result: false}
+    const input = {foo: "bar"}
+    httpSpy.getMockedUrl.and.returnValue({
+      statusCode: 200,
+      body: expectedResult
+    })
+
+    await expectAsync(client.check(path, input))
+      .toBeResolvedTo(false)
+    expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
+      body: {input}
+    }));
+  })
+
+  it("Error response", async () => {
+    httpSpy.getMockedUrl.and.returnValue({
+      statusCode: 500,
+      body: 'some error happened'
+    })
+
+    const input = {foo: "bar"}
+
+    // Cannot use expectAsync().toBeRejectedWith(), as it doesn't allow us to assert error properties other than message
+    try {
+      const result = await client.check(path, input)
+      fail(`Expected error, got: ${result}`)
+    } catch (err) {
+      expect(err.name).toBe('StyraRunError')
+      expect(err.message).toBe('Allow check failed')
+      expect(err.path).toBe(path)
+      expect(err.query).toEqual({input})
+      expect(err.cause?.name).toBe('StyraRunError')
+      expect(err.cause?.message).toBe('Check failed')
+      expect(err.cause?.cause?.name).toBe('StyraRunHttpError')
+      expect(err.cause?.cause?.message).toBe('Unexpected status code: 500')
+      expect(err.cause?.cause?.statusCode).toBe(500)
+      expect(err.cause?.cause?.attempts).toBe(1)
+      expect(err.cause?.cause?.body).toBe('some error happened')
+    }
+  })
+})
+
+describe("Assert", () => {
   let httpSpy
 
   const port = 8082

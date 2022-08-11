@@ -32,11 +32,13 @@ const options = {
 const client = StyraRun.New(options)
 ```
 
-### Check
+### Query
+
+Makes a policy rule query, returning the result dictionary: `{"result": any}`
 
 ```javascript
 const input = {...}
-client.check('foo/bar/allowed', input)
+client.query('foo/bar/allowed', input)
     .then(({result}) => {
         if (result) {
             // Handle policy result
@@ -52,8 +54,31 @@ client.check('foo/bar/allowed', input)
     })
 ```
 
+### Check
+
+Makes a policy rule query, returning `true` if the result dictionary equals `{"result": true}`, `false` otherwise.
+
+```javascript
+const input = {...}
+client.check('foo/bar/allowed', input)
+    .then((allowed) => {
+        if (allowed) {
+            // Handle policy result
+            ...
+        }
+        // Handle policy reject
+        ...
+        return Promise.reject(...)
+    })
+    .catch((err) => {
+        // Handle error
+        ...
+    })
+```
+
 ### Assert
 
+Makes a policy rule query, throwing an exception if the result document doesn't equal `{"result": true}`.
 By default, the `assert()` function requires the policy decission to contain `{"result": true}`.
 
 ```javascript

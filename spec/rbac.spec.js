@@ -119,8 +119,7 @@ describe("Bindings can be fetched", () => {
   const basePath = 'v1/projects/user1/proj1/envs/env1'
   const sdkClient = sdk.New({
     url: 'http://placeholder',
-    token: 'foobar',
-    eventListeners: [(type, info) => {console.debug(type, info)}]
+    token: 'foobar'
   })
   sdkClient.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
@@ -347,8 +346,7 @@ describe("Bindings can be upserted", () => {
   const basePath = 'v1/projects/user1/proj1/envs/env1'
   const sdkClient = sdk.New({
     url: 'http://placeholder',
-    token: 'foobar',
-    eventListeners: [(type, info) => {console.debug(type, info)}]
+    token: 'foobar'
   })
   sdkClient.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 

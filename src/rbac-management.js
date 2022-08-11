@@ -19,7 +19,7 @@ export class Manager {
   async getRoles(input) {
     await this.styraRunClient.assert(AUTHZ_PATH, input)
 
-    const roles = await this.styraRunClient.check(ROLES_PATH, input)
+    const roles = await this.styraRunClient.query(ROLES_PATH, input)
       .then(resp => resp.result)
 
     this.styraRunClient.handleEvent('rbac-get-roles', {input, roles})

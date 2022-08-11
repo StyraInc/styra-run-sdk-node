@@ -42,7 +42,7 @@ export class Client {
    * @typedef {{result: *}|{}} CheckResult
    */
   /**
-   * Makes an authorization check against a policy rule specified by `path`.
+   * Makes an authorization query against a policy rule specified by `path`.
    * Where `path` is the trailing component(s) of the full request path `"/v1/projects/<USER_ID>/<PROJECT_ID>/envs/<ENVIRONMENT_ID>/data/<PATH>"`
    *
    * Returns a `Promise` that on a successful Styra Run API response resolves to the response body dictionary, e.g.: `{"result": ...}`.
@@ -54,7 +54,7 @@ export class Client {
    * @param input the input document for the query
    * @returns {Promise<CheckResult,StyraRunError>}
    */
-  async check(path, input = undefined) {
+  async query(path, input = undefined) {
     const query = input ? {input} : {}
 
     try {
@@ -67,6 +67,108 @@ export class Client {
   }
 
   /**
+   * @callback ResultPredicate
+   * @param {CheckResult} decision
+   * @returns {Boolean} `true` is `decision` is valid, `false` otherwise
+   */
+  /**
+   * Makes an authorization check against a policy rule specified by `path`.
+   * Where `path` is the trailing component(s) of the full request path
+   * `"/v1/projects/<USER_ID>/<PROJECT_ID>/envs/<ENVIRONMENT_ID>/data/<PATH>"`
+   *
+   * The optional `predicate` is a callback that takes the Styra Run check response
+   * body as argument, and should return `true` if it sattisfies the authorization requirements, and `false` otherwise.
+   *
+   * ```js
+   * const input = ...
+   * client.assert('example/allowed', input, (res) => {
+   *   res?.result === true
+   * })
+   *   .then(() => { ... })
+   *   .catch((err) => { ... })
+   * ```
+   *
+   * Returns a `Promise` that resolves with `true` if the check was successful, and `false` otherwise.
+   * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
+   *
+   * @param {string} path the path to the policy rule to query
+   * @param {Object<string, any>} input the input document for the query
+   * @param {ResultPredicate} predicate a callback function, taking a query response dictionary as arg, returning true/false
+   * @returns {Promise<undefined, StyraRunError|StyraRunAssertionError>}
+   */
+  async check(path, input = undefined, predicate = DEFAULT_PREDICATE) {
+    let result
+    try {
+      const decission = await this.query(path, input)
+      return predicate(decission)
+    } catch (err) {
+      throw new StyraRunError('Allow check failed', path, {input}, err)
+    }
+
+    if (!result) {
+      throw new StyraRunAssertionError(path, {input})
+    }
+  }
+
+  /**
+   * Makes an authorization check against a policy rule specified by `path`.
+   * Where `path` is the trailing component(s) of the full request path
+   * `"/v1/projects/<USER_ID>/<PROJECT_ID>/envs/<ENVIRONMENT_ID>/data/<PATH>"`
+   *
+   * The optional `predicate` is a callback that takes the Styra Run check response
+   * body as argument, and should return `true` if it sattisfies the authorization requirements, and `false` otherwise.
+   *
+   * ```js
+   * const input = ...
+   * client.assert('example/allowed', input, (res) => {
+   *   res?.result === true
+   * })
+   *   .then(() => { ... })
+   *   .catch((err) => { ... })
+   * ```
+   *
+   * Returns a `Promise` that resolves with no value, and rejected with a {@link StyraRunError}.
+   * If the policy decision is rejected by the provided `predicate`, the returned `Promise` is rejected with a {@link StyraRunAssertionError}.
+   * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
+   *
+   * @param {string} path the path to the policy rule to query
+   * @param {Object<string, any>} input the input document for the query
+   * @param {ResultPredicate} predicate a callback function, taking a query response dictionary as arg, returning true/false
+   * @returns {Promise<undefined, StyraRunError|StyraRunAssertionError>}
+   * @see {@link check}
+   */
+  async assert(path, input = undefined, predicate = DEFAULT_PREDICATE) {
+    let result = await this.check(path, input, predicate)
+
+    if (!result) {
+      throw new StyraRunAssertionError(path, {input})
+    }
+  }
+
+  /**
+   * Convenience function that operates like {@link assert}, but returns a `Promise`,
+   * that on a successful response resolves with `data` as its output.
+   *
+   * ```js
+   * const myData = ...
+   * client.assertAndReturn(myData, 'example/allowed')
+   *   .then((allowedData) => { ... })
+   *   .catch((err) => { ... })
+   * ```
+   *
+   * @param data optional value to return on asserted
+   * @param path the path to the policy rule to query
+   * @param input the input document for the query
+   * @param predicate a callback function, taking a response body dictionary as arg, returning true/false
+   * @returns {Promise<?, StyraRunError>}
+   * @see {@link assert}
+   */
+  async assertAndReturn(data, path, input = undefined, predicate = DEFAULT_PREDICATE) {
+    await this.assert(path, input, predicate)
+    return data
+  }
+
+  /**
    * @typedef {{code: string, message: string}} CheckError
    */
   /**
@@ -76,7 +178,7 @@ export class Client {
    * @typedef {BatchCheckItemResult[]} BatchCheckResult
    */
   /**
-   * Makes a batched authorization check.
+   * Makes a batched request of policy rule queries.
    * The provided `items` is a list of dictionaries with the properties:
    *
    * * `path`: the path to the policy rule to query for this entry
@@ -92,7 +194,7 @@ export class Client {
    * @param input the input document to apply to the entire batch request, or `undefined`
    * @returns {Promise<BatchCheckResult, StyraRunError>} a list of result dictionaries
    */
-  async batchCheck(items, input = undefined) {
+   async batchQuery(items, input = undefined) {
     // Split the items over multiple batch requests, if necessary;
     // to cope with server-side enforced size limit of batch request.
     const remainingItems = [...items]
@@ -121,74 +223,6 @@ export class Client {
       .map((decision) => decision.result ?? [])
       .flat(1)
     return decisions
-  }
-
-  /**
-   * @callback AssertPredicate
-   * @param {CheckResult} decision
-   * @returns {Boolean} `true` is `decision` is valid, `false` otherwise
-   */
-  /**
-   * Makes an authorization check against a policy rule specified by `path`.
-   * Where `path` is the trailing component(s) of the full request path
-   * `"/v1/projects/<USER_ID>/<PROJECT_ID>/envs/<ENVIRONMENT_ID>/data/<PATH>"`
-   *
-   * The provided `predicate` is a callback that takes the Styra Run check response
-   * body as argument, and should return `true` if it sattisfies the authorization requirements, and `false` otherwise.
-   *
-   * ```js
-   * const input = ...
-   * client.assert('example/allowed', input, (res) => {
-   *   res?.result === true
-   * })
-   *   .then(() => { ... })
-   *   .catch((err) => { ... })
-   * ```
-   *
-   * Returns a `Promise` that resolves with no value, and rejected with a {@link StyraRunError}.
-   * If the policy decision is rejected by the provided `predicate`, the returned `Promise` is rejected with a {@link StyraRunAssertionError}.
-   * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
-   *
-   * @param path the path to the policy rule to query
-   * @param input the input document for the query
-   * @param predicate a callback function, taking a response body dictionary as arg, returning true/false
-   * @returns {Promise<undefined, StyraRunError|StyraRunAssertionError>}
-   */
-  async assert(path, input = undefined, predicate = DEFAULT_PREDICATE) {
-    let result
-    try {
-      const decission = await this.check(path, input)
-      result = predicate(decission)
-    } catch (err) {
-      throw new StyraRunError('Allow check failed', path, {input}, err)
-    }
-
-    if (!result) {
-      throw new StyraRunAssertionError(path, {input})
-    }
-  }
-
-  /**
-   * Convenience function that operates like {@link assert}, but returns a `Promise`,
-   * that on a successful response resolves with `data` as its output.
-   *
-   * ```js
-   * const myData = ...
-   * client.assertAndReturn(myData, 'example/allowed')
-   *   .then((allowedData) => { ... })
-   *   .catch((err) => { ... })
-   * ```
-   *
-   * @param data optional value to return on asserted
-   * @param path the path to the policy rule to query
-   * @param input the input document for the query
-   * @param predicate a callback function, taking a response body dictionary as arg, returning true/false
-   * @returns {Promise<?, StyraRunError>}
-   * @see {@link assert}
-   */
-  async assertAndReturn(data, path, input = undefined, predicate = DEFAULT_PREDICATE) {
-    await this.assert(path, input, predicate)
-    return data
   }
 
   /**
@@ -229,7 +263,7 @@ export class Client {
     let resultList
     try {
       const items = list.map(transformer)
-      resultList = await this.batchCheck(items)
+      resultList = await this.batchQuery(items)
     } catch (err) {
       throw new StyraRunError('Allow filtering failed', path, undefined, err)
     }
@@ -384,7 +418,7 @@ export class Client {
         })
 
         const batchItems = await Promise.all(batchItemPromises)
-        const batchResult = await this.batchCheck(batchItems)
+        const batchResult = await this.batchQuery(batchItems)
         const result = (batchResult ?? []).map((item) => item.check ?? {})
 
         onDone(request, response, result)
