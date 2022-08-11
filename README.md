@@ -171,6 +171,8 @@ client.deleteData('bindings/foo/bar')
 
 ### Proxy Client-Side Policy Checks
 
+The Styra Run client can produce a HTTP request handler that proxies browser/client-side policy queries to Styra Run. This proxy is compatible with, and necessary for, the [Styra Run js SDK](https://github.com/StyraInc/styra-run-sdk-js).
+
 ```javascript
 import {Router} from 'express'
 
@@ -187,3 +189,34 @@ export default {
   router
 }
 ```
+
+The `proxy(onProxy)` function takes a callback function as argument, and returns a request handling function. The provided callback function takes as arguments the incoming HTTP `Request`, the outgoing HTTP `Response`, the `path` of the queried policy, and the, possibly incomplete, `input` document for the query. The callback must return an updated version of the provided `input` document.
+
+### RBAC Management API
+
+The Styra Run client can produce a HTTP request handler providing the RBAC management API necessary for the RBAC management widget provided by the [Styra Run js SDK](https://github.com/StyraInc/styra-run-sdk-js).
+
+```javascript
+router.all('/rbac/*', styra.manageRbac(async (req) => {
+    return {subject: req.auth.subject, tenant: req.auth.tenant}
+}))
+```
+
+The `manageRbac(createInput, getUsers, onSetBinding, pageSize)` function returns a request handling function, and takes the following arguments:
+
+| Name                      | Type       | Description |
+|---------------------------|------------|-------------|
+| `createInput(request)`    | `callback` | A callback function that takes a single argument: `request`, a HTTP `Request`. This callback must return a dictionary representing the `input` document for any necessary policy check. This document should contain the following two attributes: `subject`, a `string` representing the subject of the user session with which the request was made; and `tenant`, a `string` representing the tenant of the user session with which the request was made. Defaults to a function that returns an empty document `{}`. |
+| `getUsers(offset, limit)` | `callback` | A callback function that must return a list of user IDs, and takes two arguments: `offset`, an integer index for where in the list of users to start enumerating; and `limit`, an integer number of users to enumerate, starting at `offset`. If `limit` is `0`, no upper limit should be applied to the number of returned users. Defaults to a function that returns an empty list `[]`. |
+| `onSetBinding(id, roles)` | `callback` | A callback function that is called when a binding is about to be upserted. It takes two arguments: `id`, the id of the binding's user; and `roles`, the roles this binding will apply to the user. This callback must return a `boolean`, where `true` signals that the binding may be applied, and `false` signals that it must not. When called, implementations may create new users if necessary. Defaults to a function returning `true`. |
+| `pageSize`                | `integer`  | The number of bindings allowed per page when enumerating bindings. |
+
+#### Endpoints
+
+The RBAC API exposes the following endpoints:
+
+| Path                             | Method | Description |
+|----------------------------------|--------|-------------|
+| `<API route>/roles`              | `GET`  | Get a list of available roles. Returns a json list of strings; e.g. `["ADMIN","VIEWER"]`. |
+| `<API route>/user_bindings`      | `GET`  | Get user to role bindings. Returns a list of dictionaries, where each entry has two attributes: the `id` of the user; and their `roles`, as a list of role string identifiers; e.g. `[{"id": "alice", "roles": ["ADMIN"]}, {"id": "bob", "roles": ["VIEWER"]}]`. `GET` requests to this endpoint can include the `page` query attribute; an `integer` indicating what page of bindings to enumerate. The page size is defined when creating the API request handler on the server by calling `manageRbac`. |
+| `<API route>/user_bindings/<id>` | `PUT`  | Sets the role bindings of a user, where the `<id>` path component is the ID of the user. The request body must be a json list string role identifiers; e.g. `['ADMIN', 'VIEWER']`.

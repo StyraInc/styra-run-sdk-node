@@ -2,6 +2,7 @@ import Path from "path"
 import {ApiClient} from "./api-client.js"
 import {StyraRunError, StyraRunAssertionError, StyraRunHttpError} from "./errors.js"
 import {getBody, toJson, fromJson} from "./helpers.js"
+import {Manager as RbacManager} from "./rbac-management.js"
 
 // TODO: Add support for versioning/ETags for data API requests
 // TODO: Add support for fail-over/retry when server connection is broken
@@ -20,11 +21,17 @@ export class Client {
                 token,
                 batchMaxItems = 20,
                 inputTransformers = {},
-                sortGateways = DEFAULT_SORT_GATEWAYS_CALLBACK
+                sortGateways = DEFAULT_SORT_GATEWAYS_CALLBACK,
+                eventListeners = []
               }) {
     this.batchMaxItems = batchMaxItems
     this.inputTransformers = inputTransformers
     this.apiClient = new ApiClient(url, token, {sortGateways})
+    this.eventListeners = eventListeners
+  }
+
+  async handleEvent(type, info) {
+    this.eventListeners.forEach((listener) => listener(type, info))
   }
 
   setInputTransformer(path, transformer) {
@@ -55,7 +62,7 @@ export class Client {
       const decission = await this.apiClient.post(Path.join('data', path), json)
       return fromJson(decission)
     } catch (err) {
-      return await Promise.reject(new StyraRunError('Check failed', path, query, err))
+      throw new StyraRunError('Check failed', path, query, err)
     }
   }
 
@@ -258,7 +265,7 @@ export class Client {
       const response = await this.apiClient.get(Path.join('data', path))
       return fromJson(response)
     } catch (err) {
-      if (def && err.resp?.statusCode === 404) {
+      if (err instanceof StyraRunHttpError && err.isNotFoundStatus()) {
         return {result: def}
       }
       return Promise.reject(new StyraRunError('GET data request failed', path, undefined, err))
@@ -312,23 +319,22 @@ export class Client {
 
   /**
    * @callback OnProxyCallback
-   * @param request the incoming HTTP request
-   * @param response the outgoing HTTP response
+   * @param {http.IncomingMessage} request the incoming HTTP request
+   * @param {http.OutgoingMessage} response the outgoing HTTP response
    * @param {string} path the path to the policy rule being queried
    * @param {*} input the input document/value for the policy query
    * @returns the input document/value that should be used for the proxied policy query
    */
   /**
    * @callback OnProxyDoneCallback
-   * @param request the incoming HTTP request
-   * @param response the outgoing HTTP response
+   * @param {http.IncomingMessage} request the incoming HTTP request
+   * @param {http.OutgoingMessage} response the outgoing HTTP response
    * @param {BatchCheckItemResult[]} result the result of the proxied policy query, that should be serialized and returned to the caller
    */
-
   /**
    * @callback OnProxyErrorCallback
-   * @param request the incoming HTTP request
-   * @param response the outgoing HTTP response
+   * @param {http.IncomingMessage} request the incoming HTTP request
+   * @param {http.OutgoingMessage} response the outgoing HTTP response
    * @param {StyraRunError} error the error generated when proxying the policy query
    */
   /**
@@ -387,6 +393,56 @@ export class Client {
       }
     }
   }
+
+  /**
+   * Callback function that must create a dictionary representing an `input` document used for 
+   * policy queries related to RBAC management access.
+   * 
+   * The returned `indput` document should return two attributes:
+   * 
+   * * `subject`: a `string` representing the subject of the user session with which the request was made.
+   * * `tenant`: a `string` representing the tenant of the user session with which the request was made.
+   * 
+   * @callback OnRbacCreateInputCallback
+   * @param {http.IncomingMessage} request the incoming HTTP request
+   * @param {StyraRunError} error the error generated when proxying the policy query
+   * @returns {Object<string, *>} an `input` document
+   */
+  /**
+   * Callback function that must return a list of `string` user IDs.
+   * 
+   * @callback OnRbacGetUsersCallback
+   * @param {number} offset an integer index of where in the range of users to start enumerating
+   * @param {number} limit an integer count of the number of users, starting at `offset` to enumerate
+   * @returns {string[]} a list of user IDs
+   */
+  /**
+   * A callback function that is called when a binding is about to be upserted.
+   * Must return a boolean, where `true` indicates the binding may be created, and `false`
+   * that it must not.
+   * 
+   * When called, implementations may create new users if necessary.
+   * 
+   * @callback OnRbacOnSetBindingCallback
+   * @param {string} id the id of the binding's user
+   * @param {string[]} roles the roles to apply to the binding's user
+   * @returns {boolean} `true` if the binding should be applied, `false` otherwise
+   */
+  /**
+   * Returns an HTTP API function.
+   *
+   * @param {OnRbacCreateInputCallback} createInput 
+   * @param {OnRbacGetUsersCallback} getUsers
+   * @param {OnRbacOnSetBindingCallback} onSetBinding
+   * @param {number} pageSize `integer` representing the size of each page of enumerated user bindings
+   * @returns {(Function(*, *): Promise)}
+   */
+  manageRbac(createInput = DEFAULT_RBAC_INPUT_CALLBACK, getUsers = DEFAULT_RBAC_USERS_CALLBACK, onSetBinding = DEFAULT_RBAC_ON_SET_BINDING_CALLBACK, pageSize = 0) {
+    const manager = new RbacManager(this, createInput, getUsers, onSetBinding, pageSize)
+    return (request, response) => {
+      manager.handle(request, response)
+    }
+  }
 }
 
 function DEFAULT_SORT_GATEWAYS_CALLBACK(gateways) {
@@ -396,6 +452,18 @@ function DEFAULT_SORT_GATEWAYS_CALLBACK(gateways) {
 export function DEFAULT_PREDICATE(decision) {
   return decision?.result === true
 }
+
+function DEFAULT_RBAC_USERS_CALLBACK(offset, limit) {
+  return []
+} 
+
+function DEFAULT_RBAC_ON_SET_BINDING_CALLBACK(id, roles) {
+  return true
+} 
+
+function DEFAULT_RBAC_INPUT_CALLBACK(request) {
+  return {}
+} 
 
 function DEFAULT_ON_PROXY_HANDLER(request, response, path, input) {
   return input
@@ -414,12 +482,7 @@ function DEFAULT_PROXY_ERROR_HANDLER(request, response, error) {
 /**
  * Construct a new `Styra Run` Client from the passed `options` dictionary.
  * Valid options are:
- * * `host`: (string) The `Styra Run` API host name
- * * `port`: (number) The `Styra Run` API port
- * * `https`: (boolean) Whether to use TLS for calls to the `Styra Run` API (default: true)
- * * `projectId`: (string) Project ID
- * * `environmentId`: (string) Environment ID
- * * `userId`: (string) User ID
+ * * `url`: (string) The `Styra Run` API URL
  * * `token`: (string) the API key (Bearer token) to use for calls to the `Styra Run` API
  * * `batchMaxItems`: (number) the maximum number of query items to send in a batch request. If the number of items exceed this number, they will be split over multiple batch requests. (default: 20)
  *

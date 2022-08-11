@@ -85,9 +85,6 @@ export class ApiClient {
 
       return await this.request(opts, data)
     } catch (err) {
-      if (attempt > maxRetries) {
-        throw new StyraRunError(`Request failed after ${attempt} attempt(s)`, undefined, undefined, err)
-      }
       switch (err.statusCode) {
         case undefined: // Unknown error
         case 421: // Misdirected Request
@@ -95,8 +92,11 @@ export class ApiClient {
         case 502: // Bad Gateway
         case 503: // Service Unavailable
         case 504: // Gateway Timeout
-          return await this.requestWithRetry(options, data, attempt+1)
+          if (attempt <= maxRetries) {
+            return await this.requestWithRetry(options, data, attempt+1)
+          }
       }
+      err.attempts = attempt
       throw err
     }
   }

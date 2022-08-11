@@ -307,11 +307,10 @@ describe("Gateway failover", () => {
             const result = await client.get('api')
             fail(`Expected error, got: ${result}`)
         } catch (err) {
-            expect(err.message).toBe('Request failed after 3 attempt(s)')
-            expect(err.cause).toBeDefined()
-            expect(err.cause?.message).toBe('Unexpected status code: 500')
-            expect(err.cause?.body).toBe('Internal Server Error')
-            expect(err.cause?.statusCode).toBe(500)
+            expect(err.message).toBe('Unexpected status code: 500')
+            expect(err.body).toBe('Internal Server Error')
+            expect(err.statusCode).toBe(500)
+            expect(err.attempts).toBe(3)
         }
 
         expect(httpSpy.get421Url).toHaveBeenCalledWith(jasmine.objectContaining({
@@ -337,11 +336,10 @@ describe("Gateway failover", () => {
             const result = await client.get('api')
             fail(`Expected error, got: ${result}`)
         } catch (err) {
-            expect(err.message).toBe('Request failed after 1 attempt(s)')
-            expect(err.cause).toBeDefined()
-            expect(err.cause?.message).toBe('Unexpected status code: 500')
-            expect(err.cause?.body).toBe('Internal Server Error')
-            expect(err.cause?.statusCode).toBe(500)
+            expect(err.message).toBe('Unexpected status code: 500')
+            expect(err.body).toBe('Internal Server Error')
+            expect(err.statusCode).toBe(500)
+            expect(err.attempts).toBe(1)
         }
 
         expect(httpSpy.get421Url).toHaveBeenCalledTimes(0)
