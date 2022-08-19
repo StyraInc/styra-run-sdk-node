@@ -48,7 +48,6 @@ export class Manager {
     return bindings
   }
 
-  // TODO: Take a dictionary (list?) of username->roles bindings
   async setBinding(binding, input) {
     await this.styraRunClient.assert(AUTHZ_PATH, input)
 

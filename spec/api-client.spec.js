@@ -1,8 +1,12 @@
 import Url from "url"
 import serverSpy from "jasmine-http-server-spy"
-import { ApiClient } from "../src/api-client.js"
+import { ApiClient, makeOrganizeGatewaysCallback } from "../src/api-client.js"
 
-describe("Gateway lookup", () => {
+const ORGANIZE_GATEWAYS = (gateways) => {
+    return gateways
+}
+
+describe("Gateway lookup:", () => {
     let httpSpy
 
     const port = 8082
@@ -54,7 +58,7 @@ describe("Gateway lookup", () => {
     })
 
     it("getGateways() can be called directly", async () => {
-        const client = new ApiClient(url, token)
+        const client = new ApiClient(url, token, { organizeGateways: ORGANIZE_GATEWAYS })
 
         httpSpy.getGatewayUrl.and.returnValue({
             statusCode: 200,
@@ -93,8 +97,66 @@ describe("Gateway lookup", () => {
         expect(httpSpy.getGatewayUrl).toHaveBeenCalled()
     })
 
+    it("organize-gateways callback overrides gateway list", async () => {
+        let organizeGatewaysCallCount = 0
+        const organizeGateways = () => {
+            organizeGatewaysCallCount += 1
+            return [
+                {
+                    gateway_url: 'http://do'
+                },
+                {
+                    gateway_url: 'http://re'
+                },
+                {
+                    gateway_url: 'http://mi'
+                }
+            ]
+        }
+
+        const client = new ApiClient(url, token, { organizeGateways })
+
+        httpSpy.getGatewayUrl.and.returnValue({
+            statusCode: 200,
+            body: {
+                result: [
+                    {
+                        aws: {
+                            region: 'foo',
+                            zone: 'foo1'
+                        },
+                        gateway_url: 'http://localhost:8082/my/api'
+                    },
+                    {
+                        note: 'missing gateway_url'
+                    },
+                    {
+                        note: 'broken gateway_url',
+                        gateway_url: 42
+                    },
+                    {
+                        foo: {
+                            bar: 'baz'
+                        },
+                        gateway_url: 'https://example.com'
+                    }
+                ]
+            }
+        })
+
+        const gateways = await client.getGateways()
+
+        expect(organizeGatewaysCallCount).toBe(1)
+        expect(gateways.length).toBe(3)
+        expect(gateways[0]).toEqual(Url.parse('http://do'))
+        expect(gateways[1]).toEqual(Url.parse('http://re'))
+        expect(gateways[2]).toEqual(Url.parse('http://mi'))
+
+        expect(httpSpy.getGatewayUrl).toHaveBeenCalled()
+    })
+
     it("gateways API endpoint is called only once", async () => {
-        const client = new ApiClient(url, token)
+        const client = new ApiClient(url, token, { organizeGateways: ORGANIZE_GATEWAYS })
 
         httpSpy.getGatewayUrl.and.returnValue({
             statusCode: 200,
@@ -107,17 +169,17 @@ describe("Gateway lookup", () => {
 
         const gateways = await client.getGateways()
         const gateways2 = await client.getGateways()
-        
+
         expect(gateways).toEqual(gateways2)
         expect(httpSpy.getGatewayUrl).toHaveBeenCalledOnceWith(jasmine.objectContaining({}))
     })
 
     it("getGateways() is called before any request", async () => {
-        const client = new ApiClient(url, token)
+        const client = new ApiClient(url, token, { organizeGateways: ORGANIZE_GATEWAYS })
         const apiPath = 'foo/bar'
-        const expectedData = {foo: 'bar'}
-        const postBody = {do: 're'}
-        const putBody = {mi: 'fa'}
+        const expectedData = { foo: 'bar' }
+        const postBody = { do: 're' }
+        const putBody = { mi: 'fa' }
 
         httpSpy.getGatewayUrl.and.returnValue({
             statusCode: 200,
@@ -162,8 +224,6 @@ describe("Gateway lookup", () => {
         }))
         expect(httpSpy.deleteApiUrl).toHaveBeenCalledOnceWith(jasmine.objectContaining({}))
     })
-
-    it("the list of gateways can be sorted", async () => {})
 })
 
 describe("Gateway failover", () => {
@@ -172,7 +232,7 @@ describe("Gateway failover", () => {
     const port = 8082
     const baseUrl = `http://localhost:${port}`
     const token = 'foobar'
-    const expectedData = {result: true}
+    const expectedData = { result: true }
 
     beforeAll((done) => {
         httpSpy = serverSpy.createSpyObj('mockServer', [
@@ -212,7 +272,7 @@ describe("Gateway failover", () => {
             statusCode: 200,
             body: expectedData
         })
-        
+
         httpSpy.get421Url.and.returnValue({
             statusCode: 421,
             body: 'Misdirected Request'
@@ -256,7 +316,7 @@ describe("Gateway failover", () => {
 
     it("failed requests will be retried against the next gateway in the list", async () => {
         // Set client.gateways directly; call to /gateways API endpoint is tested elsewhere
-        const client = new ApiClient('http://placeholder', token, {maxRetries: 10})
+        const client = new ApiClient('http://placeholder', token, { maxRetries: 10, organizeGateways: ORGANIZE_GATEWAYS })
         client.gateways = [
             Url.parse('http://localhost/no/listener'),
             Url.parse(`${baseUrl}/421`),
@@ -292,7 +352,7 @@ describe("Gateway failover", () => {
 
     it("max retries setting is respected", async () => {
         // Set client.gateways directly; call to /gateways API endpoint is tested elsewhere
-        const client = new ApiClient('http://placeholder', token, {maxRetries: 2})
+        const client = new ApiClient('http://placeholder', token, { maxRetries: 2, organizeGateways: ORGANIZE_GATEWAYS })
         client.gateways = [
             Url.parse('http://localhost/no/listener'),
             Url.parse(`${baseUrl}/421`),
@@ -327,7 +387,7 @@ describe("Gateway failover", () => {
 
     it("retry count won't exceed gateway length", async () => {
         // Set client.gateways directly; call to /gateways API endpoint is tested elsewhere
-        const client = new ApiClient('http://placeholder', token, {maxRetries: 100})
+        const client = new ApiClient('http://placeholder', token, { maxRetries: 100, organizeGateways: ORGANIZE_GATEWAYS })
         client.gateways = [
             Url.parse(`${baseUrl}/500`)
         ]
@@ -351,4 +411,156 @@ describe("Gateway failover", () => {
         expect(httpSpy.get504Url).toHaveBeenCalledTimes(0)
         expect(httpSpy.getOkUrl).toHaveBeenCalledTimes(0)
     })
+})
+
+describe("Default organize-gateways callback", () => {
+    let awsHttpSpy
+
+    const hostname = 'localhost'
+    const awsPort = 8082
+    const awsHost = `${hostname}:${awsPort}`
+    const awsUrl = `http://${awsHost}`
+
+    beforeAll((done) => {
+        awsHttpSpy = serverSpy.createSpyObj('mockServer', [
+            {
+                method: 'put',
+                url: '/latest/api/token',
+                handlerName: 'putToken'
+            },
+            {
+                method: 'get',
+                url: '/latest/meta-data/placement/region',
+                handlerName: 'getRegion'
+            },
+            {
+                method: 'get',
+                url: '/latest/meta-data/placement/availability-zone-id',
+                handlerName: 'getZoneId'
+            }
+        ])
+
+        awsHttpSpy.server.start(awsPort, done)
+    })
+
+    afterAll((done) => {
+        awsHttpSpy.server.stop(done)
+    })
+
+    afterEach(() => {
+        awsHttpSpy.putToken.calls.reset()
+        awsHttpSpy.getRegion.calls.reset()
+        awsHttpSpy.getZoneId.calls.reset()
+    })
+
+    const assert = (unorganizedGateways, region, zoneId, expectation) => {
+        return async () => {
+            const organizeGatewaysCallback = makeOrganizeGatewaysCallback(awsUrl)
+
+            awsHttpSpy.putToken.and.returnValue({
+                statusCode: 404
+            })
+
+            awsHttpSpy.getRegion.and.returnValue({
+                statusCode: 200,
+                body: region
+            })
+
+            awsHttpSpy.getZoneId.and.returnValue({
+                statusCode: 200,
+                body: zoneId
+            })
+
+            const organizedGateways = await organizeGatewaysCallback(unorganizedGateways)
+
+            // No gateways were dropped or added
+            expect(organizedGateways).toHaveSize(unorganizedGateways.length)
+            unorganizedGateways.forEach((gateway) => {
+                expect(organizedGateways).toContain(gateway)
+            })
+            
+            expectation(region, zoneId, organizedGateways)
+        }
+    }
+
+    const unorganizedGateways = [
+        {
+            gateway_url: 'http://one'
+        },
+        {
+            aws: {
+                zone_id: 'zone-1',
+                zone: "z1",
+                region: 'region-1'
+            },
+            gateway_url: 'http://two'
+        },
+        {
+            aws: {
+                zone_id: 'zone-2',
+                region: 'region-1'
+            },
+            gateway_url: 'http://three'
+        },
+        {
+            aws: {
+                region: 'region-2'
+            },
+            gateway_url: 'http://four'
+        },
+        {
+            aws: {
+                zone_id: 'zone-3',
+                region: 'region-2'
+            },
+            gateway_url: 'http://five'
+        },
+        {
+            aws: {
+                region: 'region-1'
+            },
+            gateway_url: 'http://six'
+        }
+    ]
+
+    it("can handle empty gateway list", assert([], 'region-1', 'zone-1',
+        (_, __, organizedGateways) => {
+            expect(organizedGateways).toHaveSize(0)
+        })
+    )
+
+    it("sorts gateways first by aws zone-id, then by region", assert(unorganizedGateways, 'region-1', 'zone-1',
+        (region, zoneId, organizedGateways) => {
+            expect(organizedGateways[0]?.aws?.zone_id).toBe(zoneId)
+            expect(organizedGateways[1]?.aws?.region).toBe(region)
+            expect(organizedGateways[2]?.aws?.region).toBe(region)
+        })
+    )
+
+    it("sorts gateways first by aws zone-id, then by region (2)", assert(unorganizedGateways, 'region-2', 'zone-3',
+        (region, zoneId, organizedGateways) => {
+            expect(organizedGateways[0]?.aws?.zone_id).toBe(zoneId)
+            expect(organizedGateways[1]?.aws?.region).toBe(region)
+        })
+    )
+
+    it("sorts gateways by aws zone-id if no region is available", assert(unorganizedGateways, undefined, 'zone-1',
+        (_, zoneId, organizedGateways) => {
+            expect(organizedGateways[0]?.aws?.zone_id).toBe(zoneId)
+        })
+    )
+
+    it("sorts gateways by aws region if no zone-id is available", assert(unorganizedGateways, 'region-1', undefined,
+        (region, _, organizedGateways) => {
+            expect(organizedGateways[0]?.aws?.region).toBe(region)
+            expect(organizedGateways[1]?.aws?.region).toBe(region)
+            expect(organizedGateways[2]?.aws?.region).toBe(region)
+        })
+    )
+
+    it("doesn't reorder gateways if aws zone-id and region are unavailable", assert(unorganizedGateways, undefined, undefined,
+        (_, __, organizedGateways) => {
+            expect(organizedGateways).toEqual(unorganizedGateways)
+        })
+    )
 })

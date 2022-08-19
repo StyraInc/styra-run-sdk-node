@@ -21,12 +21,12 @@ export class Client {
                 token,
                 batchMaxItems = 20,
                 inputTransformers = {},
-                sortGateways = DEFAULT_SORT_GATEWAYS_CALLBACK,
+                organizeGateways,
                 eventListeners = []
               }) {
     this.batchMaxItems = batchMaxItems
     this.inputTransformers = inputTransformers
-    this.apiClient = new ApiClient(url, token, {sortGateways})
+    this.apiClient = new ApiClient(url, token, {organizeGateways})
     this.eventListeners = eventListeners
   }
 
@@ -50,8 +50,8 @@ export class Client {
    *
    * {@link LoadResultPromise}
    *
-   * @param path the path to the policy rule to query
-   * @param input the input document for the query
+   * @param {string} path the path to the policy rule to query
+   * @param {*|undefined} input the input document for the query (optional)
    * @returns {Promise<CheckResult,StyraRunError>}
    */
   async query(path, input = undefined) {
@@ -69,9 +69,9 @@ export class Client {
   }
 
   /**
-   * @callback ResultPredicate
+   * @callback DecisionPredicate
    * @param {CheckResult} decision
-   * @returns {Boolean} `true` is `decision` is valid, `false` otherwise
+   * @returns {Boolean} `true` if `decision` is valid, `false` otherwise
    */
   /**
    * Makes an authorization check against a policy rule specified by `path`.
@@ -94,9 +94,9 @@ export class Client {
    * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
    *
    * @param {string} path the path to the policy rule to query
-   * @param {Object<string, any>} input the input document for the query
-   * @param {ResultPredicate} predicate a callback function, taking a query response dictionary as arg, returning true/false
-   * @returns {Promise<undefined, StyraRunError|StyraRunAssertionError>}
+   * @param {Object<string, *>|*|undefined} input the input document for the query (optional)
+   * @param {DecisionPredicate|undefined} predicate a callback function, taking a query response dictionary as arg, returning true/false (optional)
+   * @returns {Promise<boolean, StyraRunError>}
    */
   async check(path, input = undefined, predicate = DEFAULT_PREDICATE) {
     try {
@@ -133,7 +133,7 @@ export class Client {
    *
    * @param {string} path the path to the policy rule to query
    * @param {Object<string, any>} input the input document for the query
-   * @param {ResultPredicate} predicate a callback function, taking a query response dictionary as arg, returning true/false
+   * @param {DecisionPredicate} predicate a callback function, taking a query response dictionary as arg, returning true/false
    * @returns {Promise<undefined, StyraRunError|StyraRunAssertionError>}
    * @see {@link check}
    */
@@ -176,6 +176,9 @@ export class Client {
   }
 
   /**
+   * @typedef {{path: string, input: *}} BatchQuery
+   */
+  /**
    * @typedef {{code: string, message: string}} CheckError
    */
   /**
@@ -197,8 +200,8 @@ export class Client {
    * with the same index in `items`.
    * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
    *
-   * @param items the list of queries to batch
-   * @param input the input document to apply to the entire batch request, or `undefined`
+   * @param {BatchQuery[]} items the list of queries to batch
+   * @param {*} input the input document to apply to the entire batch request, or `undefined`
    * @returns {Promise<BatchCheckResult, StyraRunError>} a list of result dictionaries
    */
    async batchQuery(items, input = undefined) {
@@ -236,7 +239,7 @@ export class Client {
   }
 
   /**
-   * For each entry in the provided `list`, an authorization check against a policy rule wit a boolean return type, specified by `path` is made.
+   * For each entry in the provided `list`, an authorization check against a policy rule specified by `path` is made.
    * Where `path` is the trailing component(s) of the full request path `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`
    *
    * Returns a `Promise` that resolves to a filtered version of the provided `list`.
@@ -501,10 +504,6 @@ export class Client {
       manager.handle(request, response)
     }
   }
-}
-
-function DEFAULT_SORT_GATEWAYS_CALLBACK(gateways) {
-  return gateways
 }
 
 export function DEFAULT_PREDICATE(decision) {

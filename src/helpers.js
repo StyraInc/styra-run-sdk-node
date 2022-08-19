@@ -1,3 +1,37 @@
+import Http from "http"
+import Https from "https"
+import Path from "path"
+import { StyraRunError, StyraRunHttpError } from "./errors.js";
+
+export const OK = 200
+
+export async function httpRequest(options, data = undefined) {
+  return new Promise((resolve, reject) => {
+    try {
+      const client = options.https === false ? Http : Https
+      const req = client.request(options, async (response) => {
+        let body = await getBody(response);
+        switch (response.statusCode) {
+          case OK:
+            resolve(body);
+            break;
+          default:
+            reject(new StyraRunHttpError(`Unexpected status code: ${response.statusCode}`,
+              response.statusCode, body));
+        }
+      }).on('error', (err) => {
+        reject(new StyraRunError('Failed to send request', err))
+      })
+      if (data) {
+        req.write(data);
+      }
+      req.end()
+    } catch (err) {
+      reject(new StyraRunError('Failed to send request', err))
+    }
+  })
+}
+
 export function getBody(stream) {
   return new Promise((resolve, reject) => {
     if (stream.body) {
@@ -73,4 +107,19 @@ export function parsePathParameters(url, expectedTail) {
   }
 
   return parameters
+}
+
+export function joinPath(...components) {
+  const filtered = components.filter((comp) => comp !== undefined)
+  const path = Path.join(...filtered)
+  return path.startsWith('/') ? path : '/' + path
+}
+
+export function urlToRequestOptions(url, path = undefined) {
+  return {
+    host: url.hostname,
+    port: url.port,
+    path: joinPath(url.path, path),
+    https: url.protocol === 'https:'
+  }
 }

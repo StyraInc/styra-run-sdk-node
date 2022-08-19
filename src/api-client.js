@@ -1,27 +1,19 @@
-import Http from "http"
-import Https from "https"
-import Path from "path"
 import Url from "url"
-import { StyraRunError, StyraRunHttpError } from "./errors.js"
-import { getBody } from "./helpers.js"
+import { AwsClient } from "./aws.js"
+import { StyraRunError } from "./errors.js"
+import { httpRequest, urlToRequestOptions } from "./helpers.js"
 
 // TODO: Re-fetch gateway list after some time (?)
 // TODO: Make it configurable to cap retry limit at gateway list size (?)
 
-const OK = 200
-
-function DEFAULT_SORT_GATEWAYS_CALLBACK(gateways) {
-  return gateways
-}
-
 export class ApiClient {
   constructor(url, token, {
-    sortGateways = DEFAULT_SORT_GATEWAYS_CALLBACK,
+    organizeGateways = makeOrganizeGatewaysCallback(),
     maxRetries = 3
   } = {}) {
     this.url = Url.parse(url)
     this.token = token
-    this.sortGateways = sortGateways
+    this.organizeGateways = organizeGateways
     this.maxRetries = maxRetries
   }
 
@@ -102,30 +94,7 @@ export class ApiClient {
   }
 
   async request(options, data = undefined) {
-    return new Promise((resolve, reject) => {
-      try {
-        const client = options.https === false ? Http : Https
-        const req = client.request(options, async (response) => {
-          let body = await getBody(response);
-          switch (response.statusCode) {
-            case OK:
-              resolve(body);
-              break;
-            default:
-              reject(new StyraRunHttpError(`Unexpected status code: ${response.statusCode}`,
-                response.statusCode, body));
-          }
-        }).on('error', (err) => {
-          reject(new StyraRunError('Failed to send request', err))
-        })
-        if (data) {
-          req.write(data);
-        }
-        req.end()
-      } catch (err) {
-        reject(new StyraRunError('Failed to send request', err))
-      }
-    })
+    return await httpRequest(options, data)
   }
 
   async getGateways() {
@@ -142,8 +111,9 @@ export class ApiClient {
     }
 
     const body = await this.request(options)
-    const result = JSON.parse(body)?.result || []
-    const gateways = result.map((gateway) => {
+    const gateways = JSON.parse(body)?.result || []
+    const organizedGateways = await this.organizeGateways(gateways)
+    const gatewayUrls = organizedGateways.map((gateway) => {
         try {
           return Url.parse(gateway.gateway_url)
         } catch (err) {
@@ -152,30 +122,37 @@ export class ApiClient {
       })
       .filter((entry) => entry !== undefined)
 
-    const sortedGateways = await this.sortGateways(gateways)
+    
 
-    if (!sortedGateways || sortedGateways.length === 0) {
+    if (!gatewayUrls || gatewayUrls.length === 0) {
       throw new StyraRunError('No gateways')
     }
 
-    this.gateways = sortedGateways
+    this.gateways = gatewayUrls
     return this.gateways
   }
 }
 
+export function makeOrganizeGatewaysCallback(metadataServiceUrl = 'http://169.254.169.254:80') {
+  const awsClient = new AwsClient(metadataServiceUrl)
+  return async (gateways) => {
+    // NOTE: We assume zone-id:s are unique across regions
+    const {region, zoneId} = await awsClient.getMetadata()
+    if (region === undefined && zoneId === undefined) {
+      return gateways
+    }
 
-
-function urlToRequestOptions(url, path = undefined) {
-  return {
-    host: url.hostname,
-    port: url.port,
-    path: joinPath(url.path, path),
-    https: url.protocol === 'https:'
+    const copy = [...gateways]
+    return copy.sort((a, b) => {
+      if (zoneId !== undefined && a.aws?.zone_id === zoneId) {
+        // always sort matching zone-id higher
+        return -1
+      } 
+      if (region !== undefined && a.aws?.region === region) {
+        // only sort a higher if b doesn't have a matching zone-id
+        return (zoneId !== undefined && b.aws?.zone_id === zoneId) ? 1 : -1 
+      }
+      return 0
+    })
   }
 }
-
-function joinPath(...components) {
-  const filtered = components.filter((comp) => comp !== undefined)
-  return Path.join(...filtered)
-}
-

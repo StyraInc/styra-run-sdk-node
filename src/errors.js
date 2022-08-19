@@ -47,4 +47,8 @@ export class StyraRunHttpError extends StyraRunError {
   isNotFoundStatus() {
     return this.statusCode === 404
   }
+
+  isUnauthorizedStatus() {
+    return this.statusCode === 401
+  }
 }
