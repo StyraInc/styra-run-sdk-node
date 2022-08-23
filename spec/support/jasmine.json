@@ -1,5 +1,7 @@
 {
-  "spec_dir": "spec",
+  "spec_dir": "spec", // should rename this folder tests instead of spec?
+
+  // why not call all tests "*.test.js"?
   "spec_files": [
     "**/*[sS]pec.?(m)js"
   ],

@@ -26,15 +26,18 @@ or in your package.json:
 import StyraRun from "styra-run"
 
 const options = {
-  https: process.env.RUN_URL
+  url: process.env.RUN_URL // call it url or host?
   token: process.env.RUN_TOKEN
 }
+
+// New should be removed to keep this simple --- similar to the frontendSDK
+// stripe example: const stripe = Stripe("pk_test_TYooMQauvdEDq54NiTphI7jx");
 const client = StyraRun.New(options)
 ```
 
 ### Query
 
-Makes a policy rule query, returning the result dictionary: `{"result": any}`
+Makes a policy rule query, returning the result object: `{"result": any}`
 
 ```javascript
 const input = {...}
@@ -56,7 +59,7 @@ client.query('foo/bar/allowed', input)
 
 ### Check
 
-Makes a policy rule query, returning `true` if the result dictionary equals `{"result": true}`, `false` otherwise.
+Makes a policy rule query, returning `true` if the result object equals `{"result": true}`, `false` otherwise.
 
 ```javascript
 const input = {...}
@@ -98,7 +101,7 @@ However, the default predicate can be overridden:
 
 ```javascript
 const input = {...}
-// Predicate that requires the policy rule to return a dictionary containing a `{"role": "admin"}` entry.
+// Predicate that requires the policy rule to return a object containing a `{"role": "admin"}` entry.
 const myPredicate = (response) => {
     return response?.result?.role === 'admin'
 }
@@ -245,3 +248,23 @@ The RBAC API exposes the following endpoints:
 | `<API route>/roles`              | `GET`  | Get a list of available roles. Returns a json list of strings; e.g. `["ADMIN","VIEWER"]`. |
 | `<API route>/user_bindings`      | `GET`  | Get user to role bindings. Returns a list of dictionaries, where each entry has two attributes: the `id` of the user; and their `roles`, as a list of role string identifiers; e.g. `[{"id": "alice", "roles": ["ADMIN"]}, {"id": "bob", "roles": ["VIEWER"]}]`. `GET` requests to this endpoint can include the `page` query attribute; an `integer` indicating what page of bindings to enumerate. The page size is defined when creating the API request handler on the server by calling `manageRbac`. |
 | `<API route>/user_bindings/<id>` | `PUT`  | Sets the role bindings of a user, where the `<id>` path component is the ID of the user. The request body must be a json list string role identifiers; e.g. `['ADMIN', 'VIEWER']`.
+
+/*
+
+it would be nice to provide an example of a middleware to authorize protected endpoints
+middlewares are Express specific I believe
+example:
+
+router.use(async function hasManagePermissions (req, res, next) {
+  const isAllowed = await client.check(...);
+
+  if (isAllowed) {
+    next()
+  } else {
+    res.sendStatus(401)
+  }
+});
+
+should also provide the min version of Node.js this SDK supports?
+Node 18 is current and will be active LTS https://nodejs.org/en/about/releases/ when we probably release this SDK
+*/

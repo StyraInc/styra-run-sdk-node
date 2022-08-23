@@ -1,11 +1,12 @@
 import Url from "url"
 import {getBody, toJson, fromJson, pathEndsWith, parsePathParameters} from "./helpers.js"
-import {StyraRunError, StyraRunHttpError} from "./errors.js"
-import path from "path"
+import {StyraRunError} from "./errors.js"
 
-const AUTHZ_PATH = 'rbac/manage/allow'
-const ROLES_PATH = 'rbac/roles'
-const BINDINGS_PATH_PREFIX = 'rbac/user_bindings'
+const RbacPath = {
+  AUTHZ: 'rbac/manage/allow',
+  ROLES: 'rbac/roles', 
+  BINDINGS_PREFIX: 'rbac/user_bindings'
+}
 
 export class Manager {
   constructor(styraRunClient, createInput, getUsers, onSetBinding, pageSize) {
@@ -30,12 +31,8 @@ export class Manager {
   async getBindings(input, page) {
     await this.styraRunClient.assert(AUTHZ_PATH, input)
 
-    let offset = 0
-    let limit = this.pageSize
-    if (page) {
-      offset = Math.max(page - 1, 0) * this.pageSize
-    }
-    const users = this.getUsers(offset, limit)
+    const offset = Math.max((page ?? 0) - 1, 0) * this.pageSize
+    const users = this.getUsers(offset, this.pageSize)
 
     const bindings = await Promise.all(users.map(async (id) => {
       const roles = await this.styraRunClient.getData(`${BINDINGS_PATH_PREFIX}/${input.tenant}/${id}`, [])
@@ -70,16 +67,20 @@ export class Manager {
         responseBody = await this.getRoles(input)
       } else if (request.method === 'GET' && pathEndsWith(url, ['user_bindings'])) {
         let page
+
         if (url.query) {
           const searchParams = new URLSearchParams(url.query)
           const pageStr = searchParams.get('page')
+          
           page = pageStr ? parseInt(pageStr) : undefined
         }
+
         responseBody = await this.getBindings(input, page)
       } else if (request.method === 'PUT' && pathEndsWith(url, ['user_bindings', '*'])) {
         const params = parsePathParameters(url, ['user_bindings', ':id'])
         const body = await getBody(request)
         const binding = await sanitizeBinding(params.id, fromJson(body), this.onSetBinding)
+
         responseBody = await this.setBinding(binding, input)
       } else {
         response.writeHead(404, {'Content-Type': 'text/plain'})

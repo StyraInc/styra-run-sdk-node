@@ -19,7 +19,7 @@ export class ApiClient {
 
   async get(path) {
     return await this.requestWithRetry({
-      path: path,
+      path,
       method: 'GET',
       headers: {
         'authorization': `bearer ${this.token}`
@@ -29,7 +29,7 @@ export class ApiClient {
 
   async put(path, data) {
     return await this.requestWithRetry({
-      path: path,
+      path,
       method: 'PUT',
       headers: {
         'content-type': 'application/json',
@@ -40,7 +40,7 @@ export class ApiClient {
 
   async post(path, data) {
     return await this.requestWithRetry({
-      path: path,
+      path,
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -51,7 +51,7 @@ export class ApiClient {
 
   async delete(path) {
     return await this.requestWithRetry({
-      path: path,
+      path,
       method: 'DELETE',
       headers: {
         'authorization': `bearer ${this.token}`
@@ -120,7 +120,7 @@ export class ApiClient {
           return undefined
         }
       })
-      .filter((entry) => entry !== undefined)
+      .filter((entry) => !!entry)
 
     
 
@@ -133,24 +133,26 @@ export class ApiClient {
   }
 }
 
+// should probably have a single file with all constants, so we don't have to search for defaults if changed
 export function makeOrganizeGatewaysCallback(metadataServiceUrl = 'http://169.254.169.254:80') {
   const awsClient = new AwsClient(metadataServiceUrl)
   return async (gateways) => {
     // NOTE: We assume zone-id:s are unique across regions
     const {region, zoneId} = await awsClient.getMetadata()
-    if (region === undefined && zoneId === undefined) {
+    // usually safe to check for falsy conditions with `!` in js; falsy values would be undefined, null, 0, empty string, false https://developer.mozilla.org/en-US/docs/Glossary/Falsy
+    if (!region && !zoneId) {
       return gateways
     }
 
     const copy = [...gateways]
     return copy.sort((a, b) => {
-      if (zoneId !== undefined && a.aws?.zone_id === zoneId) {
+      if (zoneId && a.aws?.zone_id === zoneId) {
         // always sort matching zone-id higher
         return -1
       } 
-      if (region !== undefined && a.aws?.region === region) {
+      if (region && a.aws?.region === region) {
         // only sort a higher if b doesn't have a matching zone-id
-        return (zoneId !== undefined && b.aws?.zone_id === zoneId) ? 1 : -1 
+        return (zoneId && b.aws?.zone_id === zoneId) ? 1 : -1 
       }
       return 0
     })

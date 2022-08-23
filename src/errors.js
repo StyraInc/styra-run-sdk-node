@@ -11,7 +11,7 @@ export class StyraRunError extends Error {
   }
 
   isStyraRunError() {
-    return true
+    return true // why is this necessary?  just check the class instance?  error instanceOf StyraRunError 
   }
 }
 

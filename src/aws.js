@@ -10,6 +10,7 @@ function is401Error(err) {
 }
 
 export class AwsClient {
+  // separate file for all constant configs?
   constructor(url = 'http://169.254.169.254:80', tokenTtl = 21600) {
     this.reqOpts = urlToRequestOptions(Url.parse(url))
     this.tokenTtl = tokenTtl
@@ -39,7 +40,7 @@ export class AwsClient {
 
   async getToken() {
     if (this.tokenIsUnsupported) {
-      return undefined
+      return // return nothing is assumed to return undefined
     }
 
     if (this.token) {
@@ -60,7 +61,6 @@ export class AwsClient {
       return this.token
     } catch (err) {
       this.tokenIsUnsupported = true
-      return undefined
     }
   }
 

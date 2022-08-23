@@ -17,7 +17,7 @@ import {Manager as RbacManager} from "./rbac-management.js"
  */
 export class Client {
   constructor({
-                url = "https://api-test.styra.com",
+                url = "https://api-test.styra.com", // remove hardcoded test url
                 token,
                 batchMaxItems = 20,
                 inputTransformers = {},
@@ -27,10 +27,10 @@ export class Client {
     this.batchMaxItems = batchMaxItems
     this.inputTransformers = inputTransformers
     this.apiClient = new ApiClient(url, token, {organizeGateways})
-    this.eventListeners = eventListeners
+    this.eventListeners = eventListeners // currently no README example on this usage?
   }
 
-  async signalEvent(type, info) {
+  signalEvent(type, info) { // no point in making this method async?
     this.eventListeners.forEach((listener) => listener(type, info))
   }
 
@@ -43,7 +43,7 @@ export class Client {
    */
   /**
    * Makes an authorization query against a policy rule specified by `path`.
-   * Where `path` is the trailing component(s) of the full request path `"/v1/projects/<USER_ID>/<PROJECT_ID>/envs/<ENVIRONMENT_ID>/data/<PATH>"`
+   * Where `path` is the trailing segment of the full request path `"/v1/projects/<USER_ID>/<PROJECT_ID>/envs/<ENVIRONMENT_ID>/data/<PATH>"`
    *
    * Returns a `Promise` that on a successful Styra Run API response resolves to the response body dictionary, e.g.: `{"result": ...}`.
    * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
@@ -59,9 +59,9 @@ export class Client {
 
     try {
       const json = toJson(query)
-      const decission = await this.apiClient.post(Path.join('data', path), json)
-      this.signalEvent('query', {path, query, decission})
-      return fromJson(decission)
+      const decision = await this.apiClient.post(Path.join('data', path), json)
+      this.signalEvent('query', {path, query, decision})
+      return fromJson(decision)
     } catch (err) {
       this.signalEvent('query', {path, query, err})
       throw new StyraRunError('Query failed', err)
@@ -75,7 +75,7 @@ export class Client {
    */
   /**
    * Makes an authorization check against a policy rule specified by `path`.
-   * Where `path` is the trailing component(s) of the full request path
+   * Where `path` is the trailing segment of the full request path
    * `"/v1/projects/<USER_ID>/<PROJECT_ID>/envs/<ENVIRONMENT_ID>/data/<PATH>"`
    *
    * The optional `predicate` is a callback that takes the Styra Run check response
@@ -100,8 +100,8 @@ export class Client {
    */
   async check(path, input = undefined, predicate = DEFAULT_PREDICATE) {
     try {
-      const decission = await this.query(path, input)
-      const allowed = await predicate(decission)
+      const decision = await this.query(path, input)
+      const allowed = await predicate(decision)
       this.signalEvent('check', {allowed, path, input})
       return allowed
     } catch (err) {
@@ -138,18 +138,15 @@ export class Client {
    * @see {@link check}
    */
   async assert(path, input = undefined, predicate = DEFAULT_PREDICATE) {
-    let asserted = false
     try {
-      asserted = await this.check(path, input, predicate)
+      const asserted = await this.check(path, input, predicate)
       this.signalEvent('assert', {asserted, path, input})
     } catch (err) {
-      this.signalEvent('assert', {asserted, path, input, err})
+      this.signalEvent('assert', {asserted: false, path, input, err})
       throw new StyraRunError('Assert failed', err)
     }
     
-    if (!asserted) {
-      throw new StyraRunAssertionError()
-    }
+    throw new StyraRunAssertionError()
   }
 
   /**
@@ -189,20 +186,20 @@ export class Client {
    */
   /**
    * Makes a batched request of policy rule queries.
-   * The provided `items` is a list of dictionaries with the properties:
+   * The provided `items` is a list of objects with the properties:
    *
    * * `path`: the path to the policy rule to query for this entry
    * * `input`: (optional) the input document for this entry
    *
    * If, `input` is provided, it will be applied across all query items.
    *
-   * Returns a `Promise` that is resolved to a list of result dictionaries, where each entry corresponds to an entry
+   * Returns a `Promise` that is resolved to a list of result objects, where each entry corresponds to an entry
    * with the same index in `items`.
    * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
    *
    * @param {BatchQuery[]} items the list of queries to batch
    * @param {*} input the input document to apply to the entire batch request, or `undefined`
-   * @returns {Promise<BatchCheckResult, StyraRunError>} a list of result dictionaries
+   * @returns {Promise<BatchCheckResult, StyraRunError>} a list of result objects
    */
    async batchQuery(items, input = undefined) {
     // Split the items over multiple batch requests, if necessary;
@@ -254,7 +251,7 @@ export class Client {
    */
   async filter(list, predicate, path = undefined, toInput = undefined, toPath = undefined) {
     if (list.length === 0) {
-      return Promise.resolve([])
+      return Promise.resolve([]) // why not just return [] without a Promise?
     }
 
     const transformer = (entry, i) => {
@@ -279,13 +276,13 @@ export class Client {
       const items = list.map(transformer)
       decisionList = await this.batchQuery(items)
     } catch (err) {
-      const err2 = new StyraRunError('Filtering failed', err)
-      this.signalEvent('filter', {list, decisionList, path, err: err2})
-      throw err2
+      const error = new StyraRunError('Filtering failed', err)
+      this.signalEvent('filter', {list, decisionList, path, err: error})
+      throw error
     }
 
     if (decisionList === undefined || decisionList.length !== list.length) {
-      const err = new StyraRunError(`Returned decision list size (${decisionList?.length}) not equal to provided list size (${list.length})`)
+      const err = new StyraRunError(`Returned decision list size (${decisionList?.length ?? 0}) not equal to provided list size (${list.length})`)
       this.signalEvent('filter', {list, decisionList, path, err})
       throw err
     }
@@ -300,7 +297,7 @@ export class Client {
       this.signalEvent('filter', {list, decisionList, filteredList, path})
       return filteredList
     } catch (err) {
-      this.signalEvent('filter', {list, decisionList, path})
+      this.signalEvent('filter', {list, decisionList, path, err}) // signal err in event?
       throw new StyraRunError('Allow filtering failed', err)
     }
   }
@@ -404,6 +401,8 @@ export class Client {
    * @param {OnProxyErrorCallback} onError
    * @returns {(Function(*, *): Promise)}
    */
+  // if these args are all optional, the preferred method is an object, that way, some args can still use the default without overriding all
+  // proxy({onProxy = DEFAULT_ON_PROXY_HANDLER, onDone = DEFAULT_PROXY_DONE_HANDLER, onError = DEFAULT_PROXY_ERROR_HANDLER})
   proxy(onProxy = DEFAULT_ON_PROXY_HANDLER, onDone = DEFAULT_PROXY_DONE_HANDLER, onError = DEFAULT_PROXY_ERROR_HANDLER) {
     return async (request, response) => {
       try {
@@ -528,7 +527,7 @@ function DEFAULT_ON_PROXY_HANDLER(request, response, path, input) {
 
 function DEFAULT_PROXY_DONE_HANDLER(request, response, result) {
   response.writeHead(200, {'Content-Type': 'application/json'})
-    .end(toJson(result))
+    .end(toJson(result)) // this is chainable?  the other similar code doesn't chain this.  this should be consistent throughout
 }
 
 function DEFAULT_PROXY_ERROR_HANDLER(request, response, error) {
