@@ -25,14 +25,7 @@ or in your package.json:
 // Options are pulled from the environment
 import StyraRun from "styra-run"
 
-const options = {
-  url: process.env.RUN_URL // call it url or host?
-  token: process.env.RUN_TOKEN
-}
-
-// New should be removed to keep this simple --- similar to the frontendSDK
-// stripe example: const stripe = Stripe("pk_test_TYooMQauvdEDq54NiTphI7jx");
-const client = StyraRun.New(options)
+const client = StyraRun(process.env.RUN_URL, process.env.RUN_TOKEN)
 ```
 
 ### Query
@@ -206,7 +199,7 @@ import {Router} from 'express'
 
 const router = Router()
 
-router.post('/authz', client.proxy(async (req, res, path, input) => {
+router.post('/authz', client.proxy(onProxy: async (req, res, path, input) => {
     return {
             ...input,
             subject: req.subject, // Add subject from session
@@ -218,7 +211,7 @@ export default {
 }
 ```
 
-The `proxy(onProxy)` function takes a callback function as argument, and returns a request handling function. The provided callback function takes as arguments the incoming HTTP `Request`, the outgoing HTTP `Response`, the `path` of the queried policy, and the, possibly incomplete, `input` document for the query. The callback must return an updated version of the provided `input` document.
+The `proxy()` function takes a callback function as argument, and returns a request handling function. The provided callback function takes as arguments the incoming HTTP `Request`, the outgoing HTTP `Response`, the `path` of the queried policy, and the, possibly incomplete, `input` document for the query. The callback must return an updated version of the provided `input` document.
 
 ### RBAC Management API
 

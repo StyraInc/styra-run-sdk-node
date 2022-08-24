@@ -2,6 +2,7 @@ import Url from "url"
 import { AwsClient } from "./aws.js"
 import { StyraRunError } from "./errors.js"
 import { httpRequest, urlToRequestOptions } from "./helpers.js"
+import { API_CLIENT_MAX_RETRIES, AWS_IMDSV2_URL } from "./constants.js"
 
 // TODO: Re-fetch gateway list after some time (?)
 // TODO: Make it configurable to cap retry limit at gateway list size (?)
@@ -9,7 +10,7 @@ import { httpRequest, urlToRequestOptions } from "./helpers.js"
 export class ApiClient {
   constructor(url, token, {
     organizeGateways = makeOrganizeGatewaysCallback(),
-    maxRetries = 3
+    maxRetries = API_CLIENT_MAX_RETRIES
   } = {}) {
     this.url = Url.parse(url)
     this.token = token
@@ -133,13 +134,11 @@ export class ApiClient {
   }
 }
 
-// should probably have a single file with all constants, so we don't have to search for defaults if changed
-export function makeOrganizeGatewaysCallback(metadataServiceUrl = 'http://169.254.169.254:80') {
+export function makeOrganizeGatewaysCallback(metadataServiceUrl = AWS_IMDSV2_URL) {
   const awsClient = new AwsClient(metadataServiceUrl)
   return async (gateways) => {
     // NOTE: We assume zone-id:s are unique across regions
     const {region, zoneId} = await awsClient.getMetadata()
-    // usually safe to check for falsy conditions with `!` in js; falsy values would be undefined, null, 0, empty string, false https://developer.mozilla.org/en-US/docs/Glossary/Falsy
     if (!region && !zoneId) {
       return gateways
     }

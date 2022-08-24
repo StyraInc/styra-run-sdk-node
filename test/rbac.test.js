@@ -1,7 +1,7 @@
 import http from "node:http"
 import serverSpy from "jasmine-http-server-spy"
 import Url from "url"
-import sdk, { DEFAULT_PREDICATE } from "../src/run-sdk.js"
+import StyraRun from "../src/run-sdk.js"
 import { clientRequest, withServer } from "./helpers.js"
 
 describe("Roles can be fetched", () => {
@@ -9,10 +9,7 @@ describe("Roles can be fetched", () => {
 
   const port = 8082
   const basePath = 'v1/projects/user1/proj1/envs/env1'
-  const sdkClient = sdk.New({
-    url: 'http://placeholder',
-    token: 'foobar'
-  })
+  const sdkClient = StyraRun('http://placeholder', 'foobar')
   sdkClient.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
   beforeAll(function(done) {
@@ -117,10 +114,7 @@ describe("Bindings can be fetched", () => {
 
   const port = 8082
   const basePath = 'v1/projects/user1/proj1/envs/env1'
-  const sdkClient = sdk.New({
-    url: 'http://placeholder',
-    token: 'foobar'
-  })
+  const sdkClient = StyraRun('http://placeholder', 'foobar')
   sdkClient.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
   beforeAll(function(done) {
@@ -344,10 +338,7 @@ describe("Bindings can be upserted", () => {
 
   const port = 8082
   const basePath = 'v1/projects/user1/proj1/envs/env1'
-  const sdkClient = sdk.New({
-    url: 'http://placeholder',
-    token: 'foobar'
-  })
+  const sdkClient = StyraRun('http://placeholder', 'foobar')
   sdkClient.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
   beforeAll(function(done) {

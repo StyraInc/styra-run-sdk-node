@@ -8,9 +8,8 @@ export const OK = 200
 export async function httpRequest(options, data = undefined) {
   return new Promise((resolve, reject) => {
     try {
-      const client = options.https === false ? Http : Https  // why would anyone use non-secure http?
+      const client = options.https === false ? Http : Https
 
-      // "response" is fully spelled out, might as well spell out request
       const request = client.request(options, async (response) => {
         const body = await getBody(response);
         switch (response.statusCode) {
@@ -26,9 +25,9 @@ export async function httpRequest(options, data = undefined) {
       })
 
       if (data) {
-        req.write(data);
+        request.write(data);
       }
-      req.end()
+      request.end()
     } catch (err) {
       reject(new StyraRunError('Failed to send request', err))
     }
@@ -76,32 +75,30 @@ export function fromJson(value) {
   }
 }
 
-// why is it called requiredTail?  
-export function pathEndsWith(url, requiredTail) {
+export function pathEndsWith(url, tail) {
   const segments = url.pathname.split('/')
     .filter((e) => e.length > 0)
 
-  if (requiredTail.length > segments.length) {
+  if (tail.length > segments.length) {
     return false
   }
 
-  const tailStart = segments.length - requiredTail.length
+  const tailStart = segments.length - tail.length
   const pathTail = segments.slice(tailStart)
 
-  return !requiredTail.some((required, index) => required !== '*' && required !== pathTail[index])
+  return !tail.some((required, index) => required !== '*' && required !== pathTail[index])
 }
 
-export function parsePathParameters(url, expectedTail) {
-  // since components could be elements or React components in the frontend
+export function parsePathParameters(url, tail) {
   const segments = url.pathname.split('/')
-  if (expectedTail.length > components.length) {
+  if (tail.length > segments.length) {
     return {}
   }
 
-  const tailStart = components.length - expectedTail.length
-  const pathTail = components.slice(tailStart)
+  const tailStart = segments.length - tail.length
+  const pathTail = segments.slice(tailStart)
 
-  return expectedTail.reduce((parameters, expected, index) => {
+  return tail.reduce((parameters, expected, index) => {
     if (expected.startsWith(':')) {
       parameters[expected.slice(1)] = pathTail[index]
     }
@@ -112,7 +109,7 @@ export function parsePathParameters(url, expectedTail) {
 
 export function joinPath(...args) {
   const filtered = args.filter((arg) => arg !== undefined)
-  const path = Path.join(filtered)
+  const path = Path.join(...filtered)
   return path.startsWith('/') ? path : `/${path}`
 }
 
