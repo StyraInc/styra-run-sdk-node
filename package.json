@@ -7,7 +7,7 @@
   "type": "module",
   "main": "./src/run-sdk.js",
   "scripts": {
-    "test": "jasmine --config=test/support/jasmine.json"
+    "test": "jasmine --config=tests/support/jasmine.json"
   },
   "homepage": "https://github.com/StyraInc/styra-run-sdk-node#readme",
   "repository": {
