@@ -1,6 +1,6 @@
 import Url from "url"
 import serverSpy from "jasmine-http-server-spy"
-import { ApiClient, makeOrganizeGatewaysCallback } from "../src/api-client.js"
+import { ApiClient, makeAwsStrategy, organizeGatewaysStrategies } from "../src/api-client.js"
 
 const ORGANIZE_GATEWAYS = (gateways) => {
     return gateways
@@ -58,7 +58,7 @@ describe("Gateway lookup:", () => {
     })
 
     it("getGateways() can be called directly", async () => {
-        const client = new ApiClient(url, token, { organizeGateways: ORGANIZE_GATEWAYS })
+        const client = new ApiClient(url, token, { organizeGatewaysStrategy: 'none' })
 
         httpSpy.getGatewayUrl.and.returnValue({
             statusCode: 200,
@@ -97,9 +97,9 @@ describe("Gateway lookup:", () => {
         expect(httpSpy.getGatewayUrl).toHaveBeenCalled()
     })
 
-    it("organize-gateways callback overrides gateway list", async () => {
+    it("organize-gateways strategy overrides gateway list", async () => {
         let organizeGatewaysCallCount = 0
-        const organizeGateways = () => {
+        organizeGatewaysStrategies.custom = () => {
             organizeGatewaysCallCount += 1
             return [
                 {
@@ -114,7 +114,11 @@ describe("Gateway lookup:", () => {
             ]
         }
 
-        const client = new ApiClient(url, token, { organizeGateways })
+        const client = new ApiClient(url, token, { 
+            organizeGatewaysStrategy: 'custom', 
+            asyncGatewayOrganization: false,
+            organizeGatewaysStrategyTimeout: 0
+        })
 
         httpSpy.getGatewayUrl.and.returnValue({
             statusCode: 200,
@@ -155,8 +159,269 @@ describe("Gateway lookup:", () => {
         expect(httpSpy.getGatewayUrl).toHaveBeenCalled()
     })
 
+    it("organize-gateways strategy can timeout", async () => {
+        let organizeGatewaysCallCount = 0
+        organizeGatewaysStrategies.custom = async () => {
+            organizeGatewaysCallCount += 1
+            await new Promise(r => setTimeout(r, 1_000))
+            return [
+                {
+                    gateway_url: 'http://do'
+                },
+                {
+                    gateway_url: 'http://re'
+                },
+                {
+                    gateway_url: 'http://mi'
+                }
+            ]
+        }
+
+        const client = new ApiClient(url, token, { 
+            organizeGatewaysStrategy: 'custom', 
+            asyncGatewayOrganization: false,
+            organizeGatewaysStrategyTimeout: 500
+        })
+
+        httpSpy.getGatewayUrl.and.returnValue({
+            statusCode: 200,
+            body: {
+                result: [
+                    {
+                        aws: {
+                            region: 'foo',
+                            zone: 'foo1'
+                        },
+                        gateway_url: 'http://localhost:8082/my/api'
+                    },
+                    {
+                        note: 'missing gateway_url'
+                    },
+                    {
+                        note: 'broken gateway_url',
+                        gateway_url: 42
+                    },
+                    {
+                        foo: {
+                            bar: 'baz'
+                        },
+                        gateway_url: 'https://example.com'
+                    }
+                ]
+            }
+        })
+
+        const gateways = await client.getGateways()
+
+        expect(organizeGatewaysCallCount).toBe(1)
+        expect(gateways.length).toBe(2)
+        expect(gateways[0]).toEqual(Url.parse('http://localhost:8082/my/api'))
+        expect(gateways[1]).toEqual(Url.parse('https://example.com'))
+
+        expect(httpSpy.getGatewayUrl).toHaveBeenCalled()
+    })
+
+    it("organize-gateways strategy is executed asynchronously", async () => {
+        let organizeGatewaysCallCount = 0
+        
+        let release
+        let releaseLatch = async () => release()
+        const latch = new Promise((resolve) => release = async () => resolve())
+
+        organizeGatewaysStrategies.custom = async () => {
+            organizeGatewaysCallCount += 1
+            await latch
+            return [
+                {
+                    gateway_url: 'http://do'
+                },
+                {
+                    gateway_url: 'http://re'
+                },
+                {
+                    gateway_url: 'http://mi'
+                }
+            ]
+        }
+
+        const client = new ApiClient(url, token, { 
+            organizeGatewaysStrategy: 'custom'
+        })
+
+        httpSpy.getGatewayUrl.and.returnValue({
+            statusCode: 200,
+            body: {
+                result: [
+                    {
+                        gateway_url: 'http://localhost:8082/my/api'
+                    },
+                    {
+                        gateway_url: 'https://example.com'
+                    }
+                ]
+            }
+        })
+
+        // Attempt #1
+        let gateways = await client.getGateways()
+        expect(httpSpy.getGatewayUrl).toHaveBeenCalled()
+        expect(organizeGatewaysCallCount).toBe(1)
+        expect(gateways.length).toBe(2)
+        expect(gateways[0]).toEqual(Url.parse('http://localhost:8082/my/api'))
+        expect(gateways[1]).toEqual(Url.parse('https://example.com'))
+
+        // Attempt #2
+        gateways = await client.getGateways()
+        expect(organizeGatewaysCallCount).toBe(1)
+        expect(gateways.length).toBe(2)
+        expect(gateways[0]).toEqual(Url.parse('http://localhost:8082/my/api'))
+        expect(gateways[1]).toEqual(Url.parse('https://example.com'))
+
+        // Attempt #3 (latch released)
+        await releaseLatch()
+        gateways = undefined
+        const settled = await eventually(async () => {
+            gateways = await client.getGateways()
+            return gateways?.length === 3
+        })
+        expect(settled).toBe(true)
+        expect(organizeGatewaysCallCount).toBe(1)
+        expect(gateways.length).toBe(3)
+        expect(gateways[0]).toEqual(Url.parse('http://do'))
+        expect(gateways[1]).toEqual(Url.parse('http://re'))
+        expect(gateways[2]).toEqual(Url.parse('http://mi'))
+
+        gateways = await client.getGateways()
+    })
+
+    it("when multiple organize-gateways strategies, the next in line is run when previous fails", async () => {
+        let failCallCount = 0
+        organizeGatewaysStrategies.failing = async () => {
+            failCallCount += 1
+            throw Error("Oops")
+        }
+
+        let okCallCount = 0
+        organizeGatewaysStrategies.ok = async () => {
+            okCallCount += 1
+            return [
+                {
+                    gateway_url: 'http://ok'
+                }
+            ]
+        }
+
+        const client = new ApiClient(url, token, { 
+            organizeGatewaysStrategy: ['failing', 'ok'], 
+            asyncGatewayOrganization: false
+        })
+
+        httpSpy.getGatewayUrl.and.returnValue({
+            statusCode: 200,
+            body: {
+                result: [
+                    {
+                        aws: {
+                            region: 'foo',
+                            zone: 'foo1'
+                        },
+                        gateway_url: 'http://localhost:8082/my/api'
+                    },
+                    {
+                        note: 'missing gateway_url'
+                    },
+                    {
+                        note: 'broken gateway_url',
+                        gateway_url: 42
+                    },
+                    {
+                        foo: {
+                            bar: 'baz'
+                        },
+                        gateway_url: 'https://example.com'
+                    }
+                ]
+            }
+        })
+
+        const gateways = await client.getGateways()
+
+        expect(failCallCount).toBe(1)
+        expect(okCallCount).toBe(1)
+        expect(gateways.length).toBe(1)
+        expect(gateways[0]).toEqual(Url.parse('http://ok'))
+
+        expect(httpSpy.getGatewayUrl).toHaveBeenCalled()
+    })
+
+    it("when multiple organize-gateways strategies, the next in line is run when previous previous times out", async () => {
+        let oneCallCount = 0
+        organizeGatewaysStrategies.failing = async () => {
+            oneCallCount += 1
+            await sleep(1_000) // longer than fail-over timeout
+            return [
+                {
+                    gateway_url: 'http://one'
+                }
+            ]
+        }
+
+        let twoCallCount = 0
+        organizeGatewaysStrategies.ok = async () => {
+            twoCallCount += 1
+            return [
+                {
+                    gateway_url: 'http://two'
+                }
+            ]
+        }
+
+        const client = new ApiClient(url, token, { 
+            organizeGatewaysStrategy: ['failing', 'ok'], 
+            asyncGatewayOrganization: false,
+            organizeGatewaysStrategyTimeout: 500
+        })
+
+        httpSpy.getGatewayUrl.and.returnValue({
+            statusCode: 200,
+            body: {
+                result: [
+                    {
+                        aws: {
+                            region: 'foo',
+                            zone: 'foo1'
+                        },
+                        gateway_url: 'http://localhost:8082/my/api'
+                    },
+                    {
+                        note: 'missing gateway_url'
+                    },
+                    {
+                        note: 'broken gateway_url',
+                        gateway_url: 42
+                    },
+                    {
+                        foo: {
+                            bar: 'baz'
+                        },
+                        gateway_url: 'https://example.com'
+                    }
+                ]
+            }
+        })
+
+        const gateways = await client.getGateways()
+
+        expect(oneCallCount).toBe(1)
+        expect(twoCallCount).toBe(1)
+        expect(gateways.length).toBe(1)
+        expect(gateways[0]).toEqual(Url.parse('http://two'))
+
+        expect(httpSpy.getGatewayUrl).toHaveBeenCalled()
+    })
+
     it("gateways API endpoint is called only once", async () => {
-        const client = new ApiClient(url, token, { organizeGateways: ORGANIZE_GATEWAYS })
+        const client = new ApiClient(url, token, { organizeGatewaysStrategy: 'none' })
 
         httpSpy.getGatewayUrl.and.returnValue({
             statusCode: 200,
@@ -175,7 +440,7 @@ describe("Gateway lookup:", () => {
     })
 
     it("getGateways() is called before any request", async () => {
-        const client = new ApiClient(url, token, { organizeGateways: ORGANIZE_GATEWAYS })
+        const client = new ApiClient(url, token, { organizeGatewaysStrategy: 'none' })
         const apiPath = 'foo/bar'
         const expectedData = { foo: 'bar' }
         const postBody = { do: 're' }
@@ -316,7 +581,10 @@ describe("Gateway failover", () => {
 
     it("failed requests will be retried against the next gateway in the list", async () => {
         // Set client.gateways directly; call to /gateways API endpoint is tested elsewhere
-        const client = new ApiClient('http://placeholder', token, { maxRetries: 10, organizeGateways: ORGANIZE_GATEWAYS })
+        const client = new ApiClient('http://placeholder', token, { 
+            maxRetries: 10, 
+            organizeGatewaysStrategy: 'none' 
+        })
         client.gateways = [
             Url.parse('http://localhost/no/listener'),
             Url.parse(`${baseUrl}/421`),
@@ -352,7 +620,10 @@ describe("Gateway failover", () => {
 
     it("max retries setting is respected", async () => {
         // Set client.gateways directly; call to /gateways API endpoint is tested elsewhere
-        const client = new ApiClient('http://placeholder', token, { maxRetries: 2, organizeGateways: ORGANIZE_GATEWAYS })
+        const client = new ApiClient('http://placeholder', token, { 
+            maxRetries: 2, 
+            organizeGatewaysStrategy: 'none'
+         })
         client.gateways = [
             Url.parse('http://localhost/no/listener'),
             Url.parse(`${baseUrl}/421`),
@@ -387,7 +658,10 @@ describe("Gateway failover", () => {
 
     it("retry count won't exceed gateway length", async () => {
         // Set client.gateways directly; call to /gateways API endpoint is tested elsewhere
-        const client = new ApiClient('http://placeholder', token, { maxRetries: 100, organizeGateways: ORGANIZE_GATEWAYS })
+        const client = new ApiClient('http://placeholder', token, {
+             maxRetries: 100, 
+             organizeGatewaysStrategy: 'none'
+            })
         client.gateways = [
             Url.parse(`${baseUrl}/500`)
         ]
@@ -455,7 +729,7 @@ describe("Default organize-gateways callback", () => {
 
     const assert = (unorganizedGateways, region, zoneId, expectation) => {
         return async () => {
-            const organizeGatewaysCallback = makeOrganizeGatewaysCallback(awsUrl)
+            const organizeGatewaysCallback = makeAwsStrategy(awsUrl)
 
             awsHttpSpy.putToken.and.returnValue({
                 statusCode: 404
@@ -564,3 +838,22 @@ describe("Default organize-gateways callback", () => {
         })
     )
 })
+
+async function sleep(time) {
+    await new Promise(r => setTimeout(r, time))
+}
+
+async function repeatUntilTrue(predicate, stop, interval = 100) {
+    if (await predicate()) {
+        return true
+    }
+    const isStopped = await Promise.race([sleep(interval), stop.then(async () => true)])
+    if (isStopped) {
+        return await predicate()
+    }
+    return await repeatUntilTrue(predicate, stop, interval)
+}
+
+async function eventually(predicate, timeout = 1_000) {
+    return await repeatUntilTrue(predicate, sleep(timeout))
+}

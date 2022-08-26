@@ -12,7 +12,7 @@ import { BATCH_MAX_ITEMS } from "./constants.js"
  * @module StyraRun
  */
 
- const EventType = {
+const EventType = {
   ASSERT: 'assert',
   BATCH_QUERY: 'batch-query',
   CHECK: 'check',
@@ -22,22 +22,33 @@ import { BATCH_MAX_ITEMS } from "./constants.js"
 }
 
 /**
+ * @callback SdkEventListener
+ * @param {string} type the type of event signaled
+ * @param {Object} info context-dependent info about the event
+ */
+/**
+ * @typedef {Object} SdkOptions
+ * @property {number} batchMaxItems the maximum number of query items to send in a batch request. If the number of items exceed this number, they will be split over multiple batch requests. (default: 20)
+ * @property {ClientOptions} connectionOptions connectivity options
+ * @property {SdkEventListener[]} eventListeners
+ */
+/**
  * A client for communicating with the Styra Run API.
  * @class
  */
 export class Client {
   constructor(url, token, {
                 batchMaxItems = BATCH_MAX_ITEMS,
-                organizeGateways,
+                connectionOptions,
                 eventListeners = []
               }) {
     this.batchMaxItems = batchMaxItems
-    this.apiClient = new ApiClient(url, token, {organizeGateways})
+    this.apiClient = new ApiClient(url, token, {...connectionOptions, eventListeners})
     this.eventListeners = eventListeners // currently no README example on this usage?
   }
 
-  signalEvent(type, info) {
-    this.eventListeners.forEach((listener) => listener(type, info))
+  async signalEvent(type, info) {
+    this.eventListeners.forEach(async (listener) => listener(type, info))
   }
 
   /**
@@ -518,13 +529,11 @@ function defaultOnProxyHandler(_, __, ___, input) {
 }
 
 /**
- * Construct a new `Styra Run` Client from the passed `options` dictionary.
- * Valid options are:
- * * `url`: (string) The `Styra Run` API URL
- * * `token`: (string) the API key (Bearer token) to use for calls to the `Styra Run` API
- * * `batchMaxItems`: (number) the maximum number of query items to send in a batch request. If the number of items exceed this number, they will be split over multiple batch requests. (default: 20)
+ * Construct a new `Styra Run` Client.
  *
- * @param options
+ * @param {string} url The `Styra Run` API URL
+ * @param {string} token the API key (Bearer token) to use for calls to the `Styra Run` API
+ * @param {SdkOptions} options
  * @returns {Client}
  * @constructor
  */
