@@ -23,7 +23,7 @@ or in your package.json:
 
 ```javascript
 // Options are pulled from the environment
-import StyraRun from "styra-run"
+import StyraRun from "styra-run-sdk-node"
 
 const options = {
   https: process.env.RUN_URL
