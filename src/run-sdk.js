@@ -12,7 +12,7 @@ import { BATCH_MAX_ITEMS } from "./constants.js"
  * @module StyraRun
  */
 
- const EventType = {
+const EventType = {
   ASSERT: 'assert',
   BATCH_QUERY: 'batch-query',
   CHECK: 'check',
@@ -28,16 +28,16 @@ import { BATCH_MAX_ITEMS } from "./constants.js"
 export class Client {
   constructor(url, token, {
                 batchMaxItems = BATCH_MAX_ITEMS,
-                organizeGateways,
+                connectionOptions,
                 eventListeners = []
               }) {
     this.batchMaxItems = batchMaxItems
-    this.apiClient = new ApiClient(url, token, {organizeGateways})
+    this.apiClient = new ApiClient(url, token, {...connectionOptions, eventListeners})
     this.eventListeners = eventListeners // currently no README example on this usage?
   }
 
-  signalEvent(type, info) {
-    this.eventListeners.forEach((listener) => listener(type, info))
+  async signalEvent(type, info) {
+    this.eventListeners.forEach(async (listener) => listener(type, info))
   }
 
   /**

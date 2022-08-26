@@ -7,15 +7,29 @@ import { API_CLIENT_MAX_RETRIES, AWS_IMDSV2_URL } from "./constants.js"
 // TODO: Re-fetch gateway list after some time (?)
 // TODO: Make it configurable to cap retry limit at gateway list size (?)
 
+const EventType = {
+  ORGANIZE_GATEWAYS: 'organize-gateways'
+}
+
 export class ApiClient {
   constructor(url, token, {
-    organizeGateways = makeOrganizeGatewaysCallback(),
-    maxRetries = API_CLIENT_MAX_RETRIES
+    organizeGatewaysStrategy = 'aws',
+    organizeGatewaysStrategyTimeout = 2_000,
+    asyncGatewayOrganization = true,
+    maxRetries = API_CLIENT_MAX_RETRIES,
+    eventListeners = []
   } = {}) {
     this.url = Url.parse(url)
     this.token = token
-    this.organizeGateways = organizeGateways
+    this.organizeGatewaysStrategy = organizeGatewaysStrategy
+    this.organizeGatewaysStrategyTimeout = organizeGatewaysStrategyTimeout
+    this.asyncGatewayOrganization = asyncGatewayOrganization
     this.maxRetries = maxRetries
+    this.eventListeners = eventListeners
+  }
+
+  async signalEvent(type, info) {
+    this.eventListeners.forEach(async (listener) => listener(type, info))
   }
 
   async get(path) {
@@ -81,12 +95,13 @@ export class ApiClient {
       switch (err.statusCode) {
         case undefined: // Unknown error
         case 421: // Misdirected Request
-        case 500: // Internal Server Error
+        // TODO: remove 500
+        case 500: // Internal Server Error 
         case 502: // Bad Gateway
         case 503: // Service Unavailable
         case 504: // Gateway Timeout
           if (attempt <= maxRetries) {
-            return await this.requestWithRetry(options, data, attempt+1)
+            return await this.requestWithRetry(options, data, attempt + 1)
           }
       }
       err.attempts = attempt
@@ -98,7 +113,15 @@ export class ApiClient {
     return await httpRequest(options, data)
   }
 
+  getOrganizeGatewaysStrategy() {
+    return organizeGatewaysStrategies[this.organizeGatewaysStrategy] || noneStrategy
+  }
+
   async getGateways() {
+    if (this.organizedGateways) {
+      return this.organizedGateways
+    }
+
     if (this.gateways) {
       return this.gateways
     }
@@ -113,32 +136,98 @@ export class ApiClient {
 
     const body = await this.request(options)
     const gateways = JSON.parse(body)?.result || []
-    const organizedGateways = await this.organizeGateways(gateways)
-    const gatewayUrls = organizedGateways.map((gateway) => {
-        try {
-          return Url.parse(gateway.gateway_url)
-        } catch (err) {
-          return undefined
+    this.gateways = gatewaysToUrls(gateways)
+
+    const strategy = this.getOrganizeGatewaysStrategy()
+    const organizePromise = new Promise(async (resolve) => {
+      let gatewayUrls
+      try {
+        const organizedGateways = await strategy(gateways)
+        gatewayUrls = gatewaysToUrls(organizedGateways)
+
+        if (!gatewayUrls || gatewayUrls.length === 0) {
+          throw new StyraRunError('No gateways')
+        } else {
+
+          this.organizedGateways = gatewayUrls
+          this.signalEvent(EventType.ORGANIZE_GATEWAYS, {
+            strategy: this.organizeGatewaysStrategy, gateways: gatewayUrls
+          })
         }
-      })
-      .filter((entry) => !!entry)
+      } catch (err) {
+        this.signalEvent(EventType.ORGANIZE_GATEWAYS, {
+          strategy: this.organizeGatewaysStrategy, err
+        })
+      }
 
-    
+      resolve(gatewayUrls)
+    })
 
-    if (!gatewayUrls || gatewayUrls.length === 0) {
-      throw new StyraRunError('No gateways')
+    const promises = [organizePromise]
+
+    if (this.organizeGatewaysStrategyTimeout > 0) {
+      // Only timeout strategy execution if instructed to
+      promises.push(new Promise((_, reject) => {
+        setTimeout(() => {
+          const err = new TimeoutError(this.organizeGatewaysStrategyTimeout)
+          this.signalEvent(EventType.ORGANIZE_GATEWAYS, {
+            strategy: this.organizeGatewaysStrategy, err
+          })
+          reject(err)
+        }, this.organizeGatewaysStrategyTimeout)
+      }))
     }
 
-    this.gateways = gatewayUrls
-    return this.gateways
+    const organizeOrTimeout = Promise.race(promises)
+      .catch(async (err) => {
+        if (err instanceof TimeoutError) {
+          // TODO: Run next strategy in line.
+          return this.gateways
+        } else {
+          // Not rethrowing
+          this.signalEvent(EventType.ORGANIZE_GATEWAYS, {
+            strategy: this.organizeGatewaysStrategy, err
+          })
+        }
+      })
+
+    if (this.asyncGatewayOrganization) {
+      return this.gateways
+    } else {
+      return await organizeOrTimeout
+    }
   }
 }
 
-export function makeOrganizeGatewaysCallback(metadataServiceUrl = AWS_IMDSV2_URL) {
+class TimeoutError extends Error {
+  constructor(timeout) {
+    super(`Operation took longer than ${timeout}ms`)
+    this.timeout = timeout
+  }
+}
+
+function gatewaysToUrls(gateways) {
+  return gateways.map((gateway) => {
+    try {
+      return Url.parse(gateway.gateway_url)
+    } catch (err) {
+      return undefined
+    }
+  })
+    .filter((entry) => !!entry)
+}
+
+// TODO: Add latency-based strategy
+export const organizeGatewaysStrategies = {
+  aws: makeAwsStrategy(),
+  none: noneStrategy
+}
+
+export function makeAwsStrategy(metadataServiceUrl = AWS_IMDSV2_URL) {
   const awsClient = new AwsClient(metadataServiceUrl)
   return async (gateways) => {
     // NOTE: We assume zone-id:s are unique across regions
-    const {region, zoneId} = await awsClient.getMetadata()
+    const { region, zoneId } = await awsClient.getMetadata()
     if (!region && !zoneId) {
       return gateways
     }
@@ -148,12 +237,16 @@ export function makeOrganizeGatewaysCallback(metadataServiceUrl = AWS_IMDSV2_URL
       if (zoneId && a.aws?.zone_id === zoneId) {
         // always sort matching zone-id higher
         return -1
-      } 
+      }
       if (region && a.aws?.region === region) {
         // only sort a higher if b doesn't have a matching zone-id
-        return (zoneId && b.aws?.zone_id === zoneId) ? 1 : -1 
+        return (zoneId && b.aws?.zone_id === zoneId) ? 1 : -1
       }
       return 0
     })
   }
+}
+
+function noneStrategy(gateways) {
+  return gateways
 }
