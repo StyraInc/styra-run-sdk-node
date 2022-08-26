@@ -11,9 +11,24 @@ const EventType = {
   ORGANIZE_GATEWAYS: 'organize-gateways'
 }
 
+/**
+ * Connectivity options
+ * 
+ * @typedef {Object} ClientOptions
+ * @property {string|string[]} organizeGatewaysStrategy a named organize-gateways strategy, or a list of strategies. If one fails, the next in the list is tried.
+ * @property {number} organizeGatewaysStrategyTimeout number of miliseconds deciding a organize-gateways strategy has failed, and the next strategy is used, if more than one; or an unorganized list of gateways will be returned (if asyncGatewayOrganization==false).
+ * @property {boolean} asyncGatewayOrganization if `true`, the organize-gateways strategy is called asynchronously, and requests wil be made against an unorganized gateway list the strategy result is still pending. Once completed, the organized gateway list is used for subsequent requests.
+ * @property {number} maxRetries number of retries before aborting. Retries are made against the next gateway in the gateway list.
+ * @property {SdkEventListener[]} eventListeners
+ */
+/**
+ * @param {string} url The `Styra Run` API URL
+ * @param {string} token the API key (Bearer token) to use for calls to the `Styra Run` API
+ * @param {ClientOptions} options
+ */
 export class ApiClient {
   constructor(url, token, {
-    organizeGatewaysStrategy = 'aws',
+    organizeGatewaysStrategy = 'aws', // TODO: ['aws', 'latency']
     organizeGatewaysStrategyTimeout = 2_000,
     asyncGatewayOrganization = true,
     maxRetries = API_CLIENT_MAX_RETRIES,
@@ -95,7 +110,7 @@ export class ApiClient {
       switch (err.statusCode) {
         case undefined: // Unknown error
         case 421: // Misdirected Request
-        // TODO: remove 500
+        // FIXME: remove 500?
         case 500: // Internal Server Error 
         case 502: // Bad Gateway
         case 503: // Service Unavailable
@@ -113,8 +128,66 @@ export class ApiClient {
     return await httpRequest(options, data)
   }
 
-  getOrganizeGatewaysStrategy() {
-    return organizeGatewaysStrategies[this.organizeGatewaysStrategy] || noneStrategy
+  /**
+   * If successful, returns an organized list of gateway URLs; otherwise original list of unorganized gateways.
+   */
+  async organizeGateways(gateways, strategies) {
+    const strategyName = strategies[0]
+    const remainingStrategies = strategies.slice(1)
+    const strategy = organizeGatewaysStrategies[strategyName]
+
+    if (!strategy) {
+      if (remainingStrategies.length > 0) {
+        return await this.organizeGateways(gateways, remainingStrategies)
+      }
+      // No valid strategy, no organized gateways to return
+      return
+    }
+
+    const organizePromise = new Promise(async (resolve, reject) => {
+      try {
+        const organizedGateways = await strategy(gateways)
+        const gatewayUrls = gatewaysToUrls(organizedGateways)
+
+        if (!gatewayUrls || gatewayUrls.length === 0) {
+          throw new StyraRunError('No gateways')
+        }
+
+        this.signalEvent(EventType.ORGANIZE_GATEWAYS, {
+          strategy: strategyName, gateways: gatewayUrls
+        })
+        resolve(gatewayUrls)
+      } catch (err) {
+        this.signalEvent(EventType.ORGANIZE_GATEWAYS, {
+          strategy: strategyName, err
+        })
+        reject(err)
+      }
+    })
+
+    const promises = [organizePromise]
+
+    if (this.organizeGatewaysStrategyTimeout > 0) {
+      // Only timeout strategy execution if instructed to
+      promises.push(new Promise((_, reject) => {
+        setTimeout(() => {
+          const err = new TimeoutError(this.organizeGatewaysStrategyTimeout)
+          this.signalEvent(EventType.ORGANIZE_GATEWAYS, {
+            strategy: strategyName, err
+          })
+          reject(err)
+        }, this.organizeGatewaysStrategyTimeout)
+      }))
+    }
+
+    return await Promise.race(promises)
+      .catch(async () => {
+        if (remainingStrategies.length > 0) {
+          return await this.organizeGateways(gateways, remainingStrategies)
+        }
+        // Failed to organize gateways; nothing to return
+        return
+      })
   }
 
   async getGateways() {
@@ -138,63 +211,20 @@ export class ApiClient {
     const gateways = JSON.parse(body)?.result || []
     this.gateways = gatewaysToUrls(gateways)
 
-    const strategy = this.getOrganizeGatewaysStrategy()
-    const organizePromise = new Promise(async (resolve) => {
-      let gatewayUrls
-      try {
-        const organizedGateways = await strategy(gateways)
-        gatewayUrls = gatewaysToUrls(organizedGateways)
-
-        if (!gatewayUrls || gatewayUrls.length === 0) {
-          throw new StyraRunError('No gateways')
-        } else {
-
-          this.organizedGateways = gatewayUrls
-          this.signalEvent(EventType.ORGANIZE_GATEWAYS, {
-            strategy: this.organizeGatewaysStrategy, gateways: gatewayUrls
-          })
+    const strategies = Array.isArray(this.organizeGatewaysStrategy) ? this.organizeGatewaysStrategy : [this.organizeGatewaysStrategy]
+    const organizeGatewaysPromise = this.organizeGateways(gateways, strategies)
+      .then((organizedGateways) => {
+        if (organizedGateways && organizedGateways.length > 0) {
+          this.organizedGateways = organizedGateways
+          return this.organizedGateways
         }
-      } catch (err) {
-        this.signalEvent(EventType.ORGANIZE_GATEWAYS, {
-          strategy: this.organizeGatewaysStrategy, err
-        })
-      }
-
-      resolve(gatewayUrls)
-    })
-
-    const promises = [organizePromise]
-
-    if (this.organizeGatewaysStrategyTimeout > 0) {
-      // Only timeout strategy execution if instructed to
-      promises.push(new Promise((_, reject) => {
-        setTimeout(() => {
-          const err = new TimeoutError(this.organizeGatewaysStrategyTimeout)
-          this.signalEvent(EventType.ORGANIZE_GATEWAYS, {
-            strategy: this.organizeGatewaysStrategy, err
-          })
-          reject(err)
-        }, this.organizeGatewaysStrategyTimeout)
-      }))
-    }
-
-    const organizeOrTimeout = Promise.race(promises)
-      .catch(async (err) => {
-        if (err instanceof TimeoutError) {
-          // TODO: Run next strategy in line.
-          return this.gateways
-        } else {
-          // Not rethrowing
-          this.signalEvent(EventType.ORGANIZE_GATEWAYS, {
-            strategy: this.organizeGatewaysStrategy, err
-          })
-        }
+        return this.gateways
       })
-
+    
     if (this.asyncGatewayOrganization) {
       return this.gateways
     } else {
-      return await organizeOrTimeout
+      return await organizeGatewaysPromise
     }
   }
 }
@@ -217,7 +247,7 @@ function gatewaysToUrls(gateways) {
     .filter((entry) => !!entry)
 }
 
-// TODO: Add latency-based strategy
+// TODO: Add latency-based strategy: 'latency'
 export const organizeGatewaysStrategies = {
   aws: makeAwsStrategy(),
   none: noneStrategy
