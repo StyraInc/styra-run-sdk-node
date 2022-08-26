@@ -1,13 +1,13 @@
 {
   "name": "styra-run-sdk-node",
   "version": "0.0.2",
-  "description": "The Styra Run SDK for node.js",
+  "description": "Styra Run Node.js SDK",
   "author": "Styra Inc.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./src/run-sdk.js",
   "scripts": {
-    "test": "jasmine"
+    "test": "jasmine --config=tests/support/jasmine.json"
   },
   "homepage": "https://github.com/StyraInc/styra-run-sdk-node#readme",
   "repository": {

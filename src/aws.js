@@ -1,6 +1,7 @@
 import Url from "url"
 import { StyraRunHttpError } from "./errors.js"
 import { httpRequest, joinPath, urlToRequestOptions } from "./helpers.js"
+import { AWS_IMDSV2_URL, AWS_IMDSV2_TOKEN_TTL } from "./constants.js"
 
 const TOKEN_PATH = '/latest/api/token'
 const METADATA_PATH = '/latest/meta-data'
@@ -10,7 +11,8 @@ function is401Error(err) {
 }
 
 export class AwsClient {
-  constructor(url = 'http://169.254.169.254:80', tokenTtl = 21600) {
+  // separate file for all constant configs?
+  constructor(url = AWS_IMDSV2_URL, tokenTtl = AWS_IMDSV2_TOKEN_TTL) {
     this.reqOpts = urlToRequestOptions(Url.parse(url))
     this.tokenTtl = tokenTtl
   }
@@ -39,7 +41,7 @@ export class AwsClient {
 
   async getToken() {
     if (this.tokenIsUnsupported) {
-      return undefined
+      return
     }
 
     if (this.token) {
@@ -60,7 +62,6 @@ export class AwsClient {
       return this.token
     } catch (err) {
       this.tokenIsUnsupported = true
-      return undefined
     }
   }
 

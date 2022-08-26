@@ -9,8 +9,9 @@ export async function httpRequest(options, data = undefined) {
   return new Promise((resolve, reject) => {
     try {
       const client = options.https === false ? Http : Https
-      const req = client.request(options, async (response) => {
-        let body = await getBody(response);
+
+      const request = client.request(options, async (response) => {
+        const body = await getBody(response);
         switch (response.statusCode) {
           case OK:
             resolve(body);
@@ -22,10 +23,11 @@ export async function httpRequest(options, data = undefined) {
       }).on('error', (err) => {
         reject(new StyraRunError('Failed to send request', err))
       })
+
       if (data) {
-        req.write(data);
+        request.write(data);
       }
-      req.end()
+      request.end()
     } catch (err) {
       reject(new StyraRunError('Failed to send request', err))
     }
@@ -33,15 +35,17 @@ export async function httpRequest(options, data = undefined) {
 }
 
 export function getBody(stream) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     if (stream.body) {
       // express compatibility
       resolve(stream.body)
     } else {
-      var body = ''
+      let body = ''
+
       stream.on('data', (data) => {
         body += data
       })
+
       stream.on('end', () => {
         resolve(body)
       })
@@ -51,6 +55,7 @@ export function getBody(stream) {
 
 export function toJson(data) {
   const json = JSON.stringify(data);
+
   if (json) {
     return json
   } else {
@@ -58,61 +63,54 @@ export function toJson(data) {
   }
 }
 
-export function fromJson(val) {
-  if (typeof val === 'object') {
-    return val
+export function fromJson(value) {
+  if (typeof value === 'object') {
+    return value
   }
+
   try {
-    return JSON.parse(val)
+    return JSON.parse(value)
   } catch (err) {
     throw new Error('Invalid JSON', {cause: err})
   }
 }
 
-export function pathEndsWith(url, requiredTail) {
-  const components = url.pathname.split('/')
+export function pathEndsWith(url, tail) {
+  const segments = url.pathname.split('/')
     .filter((e) => e.length > 0)
-  if (requiredTail.length > components.length) {
+
+  if (tail.length > segments.length) {
     return false
   }
 
-  const tailStart = components.length - requiredTail.length
-  const pathTail = components.slice(tailStart)
+  const tailStart = segments.length - tail.length
+  const pathTail = segments.slice(tailStart)
 
-  for (let i = 0; i < requiredTail.length; i++) { 
-    const required = requiredTail[i]
-    if (required !== '*' && required !== pathTail[i]) {
-      return false
-    }
-  }
-
-  return true
+  return !tail.some((required, index) => required !== '*' && required !== pathTail[index])
 }
 
-export function parsePathParameters(url, expectedTail) {
-  const components = url.pathname.split('/')
-  if (expectedTail.length > components.length) {
+export function parsePathParameters(url, tail) {
+  const segments = url.pathname.split('/')
+  if (tail.length > segments.length) {
     return {}
   }
 
-  const tailStart = components.length - expectedTail.length
-  const pathTail = components.slice(tailStart)
-  const parameters = {}
-  
-  for (let i = 0; i < expectedTail.length; i++) { 
-    const expected = expectedTail[i]
-    if (expected.startsWith(':')) {
-      parameters[expected.slice(1)] = pathTail[i]
-    }
-  }
+  const tailStart = segments.length - tail.length
+  const pathTail = segments.slice(tailStart)
 
-  return parameters
+  return tail.reduce((parameters, expected, index) => {
+    if (expected.startsWith(':')) {
+      parameters[expected.slice(1)] = pathTail[index]
+    }
+
+    return parameters
+  }, {})
 }
 
-export function joinPath(...components) {
-  const filtered = components.filter((comp) => comp !== undefined)
+export function joinPath(...args) {
+  const filtered = args.filter((arg) => arg !== undefined)
   const path = Path.join(...filtered)
-  return path.startsWith('/') ? path : '/' + path
+  return path.startsWith('/') ? path : `/${path}`
 }
 
 export function urlToRequestOptions(url, path = undefined) {

@@ -1,7 +1,7 @@
 import http from "node:http"
 import Url from "url"
 import serverSpy from "jasmine-http-server-spy"
-import sdk, { DEFAULT_PREDICATE } from "../src/run-sdk.js"
+import StyraRun, { defaultPredicate } from "../src/run-sdk.js"
 import { StyraRunAssertionError } from "../src/errors.js"
 import { clientRequest, withServer } from "./helpers.js"
 
@@ -11,10 +11,7 @@ describe("Query", () => {
   const port = 8082
   const basePath = 'v1/projects/user1/proj1/envs/env1'
   const path = 'foo/allowed'
-  const client = sdk.New({
-    url: 'http://placeholder',
-    token: 'foobar'
-  })
+  const client = StyraRun('http://placeholder', 'foobar')
   client.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
   beforeAll(function(done) {
@@ -139,10 +136,7 @@ describe("Batched Query", () => {
 
   const port = 8082
   const basePath = 'v1/projects/user1/proj1/envs/env1'
-  const client = sdk.New({
-    url: 'http://placeholder',
-    token: 'foobar'
-  })
+  const client = StyraRun('http://placeholder', 'foobar')
   client.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
   beforeAll(function(done) {
@@ -188,7 +182,7 @@ describe("Batched Query", () => {
   })
 
   it("Successful, max allowed items reached", async () => {
-    const client = sdk.New({
+    const client = StyraRun('http://placeholder', 'foobar', {
       batchMaxItems: 3
     })
     client.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
@@ -328,10 +322,7 @@ describe("Check", () => {
   const port = 8082
   const basePath = 'v1/projects/user1/proj1/envs/env1'
   const path = 'foo/allowed'
-  const client = sdk.New({
-    url: 'http://placeholder',
-    token: 'foobar'
-  })
+  const client = StyraRun('http://placeholder', 'foobar')
   client.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
   beforeAll(function(done) {
@@ -426,10 +417,7 @@ describe("Assert", () => {
   const port = 8082
   const basePath = 'v1/projects/user1/proj1/envs/env1'
   const path = 'foo/allowed'
-  const client = sdk.New({
-    url: 'http://placeholder',
-    token: 'foobar'
-  })
+  const client = StyraRun('http://placeholder', 'foobar')
   client.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
   beforeAll(function(done) {
@@ -543,10 +531,7 @@ describe("Filter allowed", () => {
   const port = 8082
   const basePath = 'v1/projects/user1/proj1/envs/env1'
   const path = 'foo/allowed'
-  const client = sdk.New({
-    url: 'http://placeholder',
-    token: 'foobar'
-  })
+  const client = StyraRun('http://placeholder', 'foobar')
   client.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
   const toInput = (v, i) => { 
@@ -580,7 +565,7 @@ describe("Filter allowed", () => {
     const list = []
     const expectedList = []
 
-    const result = await client.filter(list, DEFAULT_PREDICATE, path)
+    const result = await client.filter(list, defaultPredicate, path)
     expect(result).toEqual(expectedList)
   })
 
@@ -612,7 +597,7 @@ describe("Filter allowed", () => {
     const list = ['do', 're', 'mi', 'fa', 'so', 'la']
     const expectedList = ['do', 'so', 'la']
 
-    const result = await client.filter(list, DEFAULT_PREDICATE, path, toInput)
+    const result = await client.filter(list, defaultPredicate, path, toInput)
     expect(result).toEqual(expectedList)
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: expectedQuery
@@ -650,7 +635,7 @@ describe("Filter allowed", () => {
 
     const list = ['do', 're', 'mi', 'fa', 'so', 'la']
 
-    const result = await client.filter(list, DEFAULT_PREDICATE, path, undefined, toPath)
+    const result = await client.filter(list, defaultPredicate, path, undefined, toPath)
     expect(result).toEqual(list)
     expect(httpSpy.getMockedUrl).toHaveBeenCalledWith(jasmine.objectContaining({
       body: expectedQuery
@@ -665,7 +650,7 @@ describe("Filter allowed", () => {
     const list = ['do', 're', 'mi', 'fa', 'so', 'la']
 
     try {
-      const result = await client.filter(list, DEFAULT_PREDICATE, undefined, undefined, toPath)
+      const result = await client.filter(list, defaultPredicate, undefined, undefined, toPath)
       fail(`Expected error, got: ${result}`)
     } catch (err) {
       expect(err.name).toBe('StyraRunError')
@@ -685,10 +670,7 @@ describe("Proxy", () => {
   const port = 8082
   const basePath = 'v1/projects/user1/proj1/envs/env1'
   const path = 'foo/allowed'
-  const sdkClient = sdk.New({
-    url: 'http://placeholder',
-    token: 'foobar'
-  })
+  const sdkClient = StyraRun('http://placeholder', 'foobar')
   sdkClient.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
   beforeAll(function(done) {

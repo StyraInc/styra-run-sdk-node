@@ -9,10 +9,6 @@ export class StyraRunError extends Error {
     this.name = "StyraRunError"
     this.cause = cause
   }
-
-  isStyraRunError() {
-    return true
-  }
 }
 
 /**
@@ -22,10 +18,6 @@ export class StyraRunAssertionError extends StyraRunError {
   constructor() {
     super(NOT_ALLOWED)
     this.name = "StyraRunAssertionError"
-  }
-
-  isStyraRunAssertionError() {
-    return true
   }
 }
 
@@ -38,10 +30,6 @@ export class StyraRunHttpError extends StyraRunError {
     this.name = "StyraRunHttpError"
     this.statusCode = statusCode
     this.body = body
-  }
-
-  isStyraRunHttpError() {
-    return true
   }
 
   isNotFoundStatus() {

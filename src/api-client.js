@@ -2,6 +2,7 @@ import Url from "url"
 import { AwsClient } from "./aws.js"
 import { StyraRunError } from "./errors.js"
 import { httpRequest, urlToRequestOptions } from "./helpers.js"
+import { API_CLIENT_MAX_RETRIES, AWS_IMDSV2_URL } from "./constants.js"
 
 // TODO: Re-fetch gateway list after some time (?)
 // TODO: Make it configurable to cap retry limit at gateway list size (?)
@@ -9,7 +10,7 @@ import { httpRequest, urlToRequestOptions } from "./helpers.js"
 export class ApiClient {
   constructor(url, token, {
     organizeGateways = makeOrganizeGatewaysCallback(),
-    maxRetries = 3
+    maxRetries = API_CLIENT_MAX_RETRIES
   } = {}) {
     this.url = Url.parse(url)
     this.token = token
@@ -19,7 +20,7 @@ export class ApiClient {
 
   async get(path) {
     return await this.requestWithRetry({
-      path: path,
+      path,
       method: 'GET',
       headers: {
         'authorization': `bearer ${this.token}`
@@ -29,7 +30,7 @@ export class ApiClient {
 
   async put(path, data) {
     return await this.requestWithRetry({
-      path: path,
+      path,
       method: 'PUT',
       headers: {
         'content-type': 'application/json',
@@ -40,7 +41,7 @@ export class ApiClient {
 
   async post(path, data) {
     return await this.requestWithRetry({
-      path: path,
+      path,
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -51,7 +52,7 @@ export class ApiClient {
 
   async delete(path) {
     return await this.requestWithRetry({
-      path: path,
+      path,
       method: 'DELETE',
       headers: {
         'authorization': `bearer ${this.token}`
@@ -120,7 +121,7 @@ export class ApiClient {
           return undefined
         }
       })
-      .filter((entry) => entry !== undefined)
+      .filter((entry) => !!entry)
 
     
 
@@ -133,24 +134,24 @@ export class ApiClient {
   }
 }
 
-export function makeOrganizeGatewaysCallback(metadataServiceUrl = 'http://169.254.169.254:80') {
+export function makeOrganizeGatewaysCallback(metadataServiceUrl = AWS_IMDSV2_URL) {
   const awsClient = new AwsClient(metadataServiceUrl)
   return async (gateways) => {
     // NOTE: We assume zone-id:s are unique across regions
     const {region, zoneId} = await awsClient.getMetadata()
-    if (region === undefined && zoneId === undefined) {
+    if (!region && !zoneId) {
       return gateways
     }
 
     const copy = [...gateways]
     return copy.sort((a, b) => {
-      if (zoneId !== undefined && a.aws?.zone_id === zoneId) {
+      if (zoneId && a.aws?.zone_id === zoneId) {
         // always sort matching zone-id higher
         return -1
       } 
-      if (region !== undefined && a.aws?.region === region) {
+      if (region && a.aws?.region === region) {
         // only sort a higher if b doesn't have a matching zone-id
-        return (zoneId !== undefined && b.aws?.zone_id === zoneId) ? 1 : -1 
+        return (zoneId && b.aws?.zone_id === zoneId) ? 1 : -1 
       }
       return 0
     })

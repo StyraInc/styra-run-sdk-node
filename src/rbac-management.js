@@ -1,11 +1,22 @@
 import Url from "url"
-import {getBody, toJson, fromJson, pathEndsWith, parsePathParameters} from "./helpers.js"
-import {StyraRunError, StyraRunHttpError} from "./errors.js"
-import path from "path"
+import { getBody, toJson, fromJson, pathEndsWith, parsePathParameters } from "./helpers.js"
+import { StyraRunError } from "./errors.js"
 
-const AUTHZ_PATH = 'rbac/manage/allow'
-const ROLES_PATH = 'rbac/roles'
-const BINDINGS_PATH_PREFIX = 'rbac/user_bindings'
+const EventType = {
+  RBAC: 'rbac',
+  GET_ROLES: 'rbac-get-roles',
+  GET_BINDINGS: 'rbac-get-bindings',
+  SET_BINDING: 'rbac-set-binding'
+}
+
+const RbacPath = {
+  AUTHZ: 'rbac/manage/allow',
+  ROLES: 'rbac/roles', 
+  BINDINGS_PREFIX: 'rbac/user_bindings'
+}
+
+const JSON_CONTENT_TYPE = {'Content-Type': 'application/json'}
+const TEXT_CONTENT_TYPE = {'Content-Type': 'text/plain'}
 
 export class Manager {
   constructor(styraRunClient, createInput, getUsers, onSetBinding, pageSize) {
@@ -17,45 +28,41 @@ export class Manager {
   }
 
   async getRoles(input) {
-    await this.styraRunClient.assert(AUTHZ_PATH, input)
+    await this.styraRunClient.assert(RbacPath.AUTHZ, input)
 
-    const roles = await this.styraRunClient.query(ROLES_PATH, input)
+    const roles = await this.styraRunClient.query(RbacPath.ROLES, input)
       .then(resp => resp.result)
 
-    this.styraRunClient.signalEvent('rbac-get-roles', {input, roles})
+    this.styraRunClient.signalEvent(EventType.GET_ROLES, {input, roles})
 
     return roles
   }
 
   async getBindings(input, page) {
-    await this.styraRunClient.assert(AUTHZ_PATH, input)
+    await this.styraRunClient.assert(RbacPath.AUTHZ, input)
 
-    let offset = 0
-    let limit = this.pageSize
-    if (page) {
-      offset = Math.max(page - 1, 0) * this.pageSize
-    }
-    const users = this.getUsers(offset, limit)
+    const offset = Math.max((page ?? 0) - 1, 0) * this.pageSize
+    const users = this.getUsers(offset, this.pageSize)
 
     const bindings = await Promise.all(users.map(async (id) => {
-      const roles = await this.styraRunClient.getData(`${BINDINGS_PATH_PREFIX}/${input.tenant}/${id}`, [])
+      const roles = await this.styraRunClient.getData(`${RbacPath.BINDINGS_PREFIX}/${input.tenant}/${id}`, [])
         .then(resp => resp.result)
       return {id, roles}
     }))
 
-    this.styraRunClient.signalEvent('rbac-get-bindings', {input, bindings})
+    this.styraRunClient.signalEvent(EventType.GET_BINDINGS, {input, bindings})
 
     return bindings
   }
 
   async setBinding(binding, input) {
-    await this.styraRunClient.assert(AUTHZ_PATH, input)
+    await this.styraRunClient.assert(RbacPath.AUTHZ, input)
 
     try {
-      await this.styraRunClient.putData(`${BINDINGS_PATH_PREFIX}/${input.tenant}/${binding.id}`, binding.roles ?? [])
-      this.styraRunClient.signalEvent('rbac-set-binding', {binding, input})
+      await this.styraRunClient.putData(`${RbacPath.BINDINGS_PREFIX}/${input.tenant}/${binding.id}`, binding.roles ?? [])
+      this.styraRunClient.signalEvent(EventType.SET_BINDING, {binding, input})
     } catch (err) {
-      this.styraRunClient.signalEvent('rbac-set-binding', {binding, input, err})
+      this.styraRunClient.signalEvent(EventType.SET_BINDING, {binding, input, err})
       throw new BackendError('Bunding update failed', cause)
     }
   }
@@ -70,40 +77,44 @@ export class Manager {
         responseBody = await this.getRoles(input)
       } else if (request.method === 'GET' && pathEndsWith(url, ['user_bindings'])) {
         let page
+
         if (url.query) {
           const searchParams = new URLSearchParams(url.query)
           const pageStr = searchParams.get('page')
+          
           page = pageStr ? parseInt(pageStr) : undefined
         }
+
         responseBody = await this.getBindings(input, page)
       } else if (request.method === 'PUT' && pathEndsWith(url, ['user_bindings', '*'])) {
         const params = parsePathParameters(url, ['user_bindings', ':id'])
         const body = await getBody(request)
         const binding = await sanitizeBinding(params.id, fromJson(body), this.onSetBinding)
+
         responseBody = await this.setBinding(binding, input)
       } else {
-        response.writeHead(404, {'Content-Type': 'text/plain'})
+        response.writeHead(404, TEXT_CONTENT_TYPE)
         response.end('Not Found')
         return
       }
 
       if (responseBody) {
-        response.writeHead(200, {'Content-Type': 'application/json'})
+        response.writeHead(200, JSON_CONTENT_TYPE)
         response.end(toJson(responseBody))
       } else {
-        response.writeHead(200, {'Content-Type': 'application/json'})
+        response.writeHead(200, JSON_CONTENT_TYPE)
         response.end()
       }
     } catch (err) {
-      this.styraRunClient.signalEvent('rbac', {err})
+      this.styraRunClient.signalEvent(EventType.RBAC, {err})
       if (err instanceof StyraRunError) {
-        response.writeHead(403, {'Content-Type': 'text/plain'})
+        response.writeHead(403, TEXT_CONTENT_TYPE)
         response.end('Forbidden')
       } else if (err instanceof InvalidInputError) {
-        response.writeHead(400, {'Content-Type': 'text/plain'})
+        response.writeHead(400, TEXT_CONTENT_TYPE)
         response.end('Invalid request')
       } else {
-        response.writeHead(500, {'Content-Type': 'text/plain'})
+        response.writeHead(500, TEXT_CONTENT_TYPE)
         response.end('Error')
       }
     }
@@ -121,7 +132,6 @@ class BackendError extends Error {
     super(message, cause)
   }
 }
-
 
 async function sanitizeBinding(id, data, onSetBinding) {
   if (!Array.isArray(data)) {
