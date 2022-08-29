@@ -30,14 +30,48 @@ const TEXT_CONTENT_TYPE = {'Content-Type': 'text/plain'}
  * Callback for constructing the `input` document for RBAC management authorization policy checks.
  * The `tenant` property of this document is also used for `user_bindings` data queries, and is required.
  *
- * @callback CreateInput
+ * @callback CreateRbacInputCallback
+ * @param {IncomingMessage} request the incoming HTTP request
  * @returns {RbacInputDocument}
+ */
+
+/**
+ * Callback for enumerating string identifiers for known users.
+ *
+ * If `limit` is set to `0`, no upper limit should be applied to the number of user identifiers to return.
+ *
+ * @callback GetRbacUsersCallback
+ * @param {number} offset an integer index for where in the list of users to start enumerating
+ * @param {number} limit an integer number of users to enumerate, starting at `offset`
+ * @param {IncomingMessage} request the incoming HTTP request
+ * @returns {string[]} a list if string user identifiers
+ */
+
+/**
+ * A callback that is invoked when a binding is about to be upserted.
+ * Must return a boolean, where `true` indicates the binding may be created, and `false`
+ * that it must not.
+ *
+ * When called, implementations may create new users if necessary.
+ *
+ * @callback OnSetRbacBindingCallback
+ * @param {string} id the user identifier for the incoming binding
+ * @param {string[]} roles the roles to be bound to the user
+ * @param {IncomingMessage} request the incoming HTTP request
+ * @returns {boolean} `true`, if the incoming binding upsert is allowed; `false` otherwise
  */
 
 /**
  * RBAC management client.
  */
 export class RbacManager {
+  /**
+   * @param {StyraRunClient} styraRunClient
+   * @param {CreateRbacInputCallback} createInput
+   * @param {GetRbacUsersCallback} getUsers
+   * @param {OnSetRbacBindingCallback} onSetBinding
+   * @param {number} pageSize the number of user-bindings to enumerate on each page. If `0`, pagination is disabled
+   */
   constructor(styraRunClient, createInput, getUsers, onSetBinding, pageSize) {
     this.styraRunClient = styraRunClient
     this.createInput = createInput
@@ -57,11 +91,8 @@ export class RbacManager {
     return roles
   }
 
-  async getBindings(input, page) {
+  async getBindings(input, users) {
     await this.styraRunClient.assert(RbacPath.AUTHZ, input)
-
-    const offset = Math.max((page ?? 0) - 1, 0) * this.pageSize
-    const users = this.getUsers(offset, this.pageSize)
 
     const bindings = await Promise.all(users.map(async (id) => {
       const roles = await this.styraRunClient.getData(`${RbacPath.BINDINGS_PREFIX}/${input.tenant}/${id}`, [])
@@ -82,10 +113,15 @@ export class RbacManager {
       this.styraRunClient.signalEvent(EventType.SET_BINDING, {binding, input})
     } catch (err) {
       this.styraRunClient.signalEvent(EventType.SET_BINDING, {binding, input, err})
-      throw new BackendError('Bunding update failed', cause)
+      throw new BackendError('Binding update failed', err)
     }
   }
-
+  /**
+   * A request handler providing an RBAC management endpoint.
+   *
+   * @param {IncomingMessage} request the incoming HTTP request
+   * @param {OutgoingMessage} response the outgoing HTTP response
+   */
   async handle(request, response) {
     let responseBody
     try {
@@ -104,11 +140,14 @@ export class RbacManager {
           page = pageStr ? parseInt(pageStr) : undefined
         }
 
-        responseBody = await this.getBindings(input, page)
+        const offset = Math.max((page ?? 0) - 1, 0) * this.pageSize
+        const users = this.getUsers(offset, this.pageSize, request)
+
+        responseBody = await this.getBindings(input, users)
       } else if (request.method === 'PUT' && pathEndsWith(url, ['user_bindings', '*'])) {
         const params = parsePathParameters(url, ['user_bindings', ':id'])
         const body = await getBody(request)
-        const binding = await sanitizeBinding(params.id, fromJson(body), this.onSetBinding)
+        const binding = await sanitizeBinding(params.id, fromJson(body), request, this.onSetBinding)
 
         responseBody = await this.setBinding(binding, input)
       } else {
@@ -152,14 +191,14 @@ class BackendError extends Error {
   }
 }
 
-async function sanitizeBinding(id, data, onSetBinding) {
+async function sanitizeBinding(id, data, request, onSetBinding) {
   if (!Array.isArray(data)) {
     throw new InvalidInputError('Binding data is not an array')
   }
 
   const roles = data ?? []
 
-  if (await onSetBinding(id, roles) !== true) {
+  if (await onSetBinding(id, roles, request) !== true) {
     throw new InvalidInputError(`Binding rejected`)
   }
 

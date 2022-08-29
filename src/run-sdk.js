@@ -36,7 +36,7 @@ const EventType = {
  * A client for communicating with the Styra Run API.
  * @class
  */
-export class Client {
+export class StyraRunClient {
   constructor(url, token, {
                 batchMaxItems = BATCH_MAX_ITEMS,
                 connectionOptions,
@@ -396,8 +396,8 @@ export class Client {
 
   /**
    * @callback OnProxyCallback
-   * @param {http.IncomingMessage} request the incoming HTTP request
-   * @param {http.OutgoingMessage} response the outgoing HTTP response
+   * @param {IncomingMessage} request the incoming HTTP request
+   * @param {OutgoingMessage} response the outgoing HTTP response
    * @param {string} path the path to the policy rule being queried
    * @param {*} input the input document/value for the policy query
    * @returns the input document/value that should be used for the proxied policy query
@@ -458,47 +458,21 @@ export class Client {
   }
 
   /**
-   * Callback function that must create a dictionary representing an `input` document used for 
-   * policy queries related to RBAC management access.
-   * 
-   * The returned `indput` document should return two attributes:
-   * 
-   * * `subject`: a `string` representing the subject of the user session with which the request was made.
-   * * `tenant`: a `string` representing the tenant of the user session with which the request was made.
-   * 
-   * @callback OnRbacCreateInputCallback
-   * @param {http.IncomingMessage} request the incoming HTTP request
-   * @param {StyraRunError} error the error generated when proxying the policy query
-   * @returns {Object<string, *>} an `input` document
+   * A request handler providing an RBAC management endpoint.
+   *
+   * @callback RbacHandler
+   * @param {IncomingMessage} request the incoming HTTP request
+   * @param {OutgoingMessage} response the outgoing HTTP response
    */
-  /**
-   * Callback function that must return a list of `string` user IDs.
-   * 
-   * @callback OnRbacGetUsersCallback
-   * @param {number} offset an integer index of where in the range of users to start enumerating
-   * @param {number} limit an integer count of the number of users, starting at `offset` to enumerate
-   * @returns {string[]} a list of user IDs
-   */
-  /**
-   * A callback function that is called when a binding is about to be upserted.
-   * Must return a boolean, where `true` indicates the binding may be created, and `false`
-   * that it must not.
-   * 
-   * When called, implementations may create new users if necessary.
-   * 
-   * @callback OnRbacOnSetBindingCallback
-   * @param {string} id the id of the binding's user
-   * @param {string[]} roles the roles to apply to the binding's user
-   * @returns {boolean} `true` if the binding should be applied, `false` otherwise
-   */
+
   /**
    * Returns an HTTP API function.
    *
-   * @param {OnRbacCreateInputCallback} createInput 
-   * @param {OnRbacGetUsersCallback} getUsers
-   * @param {OnRbacOnSetBindingCallback} onSetBinding
+   * @param {CreateRbacInputCallback} createInput
+   * @param {GetRbacUsersCallback} getUsers
+   * @param {OnSetRbacBindingCallback} onSetBinding
    * @param {number} pageSize `integer` representing the size of each page of enumerated user bindings
-   * @returns {(Function(*, *): Promise)}
+   * @returns {RbacHandler}
    */
   manageRbac(createInput = defaultRbacInputCallback, getUsers = defaultRbacUsersCallback, onSetBinding = defaultRbacOnSetBindingCallback, pageSize = 0) {
     const manager = new RbacManager(this, createInput, getUsers, onSetBinding, pageSize)
@@ -534,9 +508,9 @@ function defaultOnProxyHandler(_, __, ___, input) {
  * @param {string} url The `Styra Run` API URL
  * @param {string} token the API key (Bearer token) to use for calls to the `Styra Run` API
  * @param {SdkOptions} options
- * @returns {Client}
+ * @returns {StyraRunClient}
  * @constructor
  */
 export default function New(url, token, options = {}) {
-  return new Client(url, token, options);
+  return new StyraRunClient(url, token, options);
 }

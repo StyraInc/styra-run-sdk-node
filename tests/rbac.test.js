@@ -219,7 +219,7 @@ describe("Bindings can be fetched", () => {
       const server = http.createServer()
       server.addListener('request', sdkClient.manageRbac(
         () => { return authzInput },
-        (offset, limit) => { 
+        (offset, limit, _) => {
           if (limit === 0) {
             return users.slice(offset)
           }
