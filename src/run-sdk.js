@@ -2,7 +2,7 @@ import Path from "path"
 import { ApiClient} from "./api-client.js"
 import { StyraRunError, StyraRunAssertionError, StyraRunHttpError } from "./errors.js"
 import { getBody, toJson, fromJson } from "./helpers.js"
-import { Manager as RbacManager } from "./rbac-management.js"
+import { RbacManager } from "./rbac-management.js"
 import { BATCH_MAX_ITEMS } from "./constants.js"
 
 // TODO: Add support for versioning/ETags for data API requests
@@ -47,8 +47,8 @@ export class Client {
     this.eventListeners = eventListeners // currently no README example on this usage?
   }
 
-  async signalEvent(type, info) {
-    this.eventListeners.forEach(async (listener) => listener(type, info))
+  signalEvent(type, info) {
+    this.eventListeners.forEach((listener) => listener(type, info))
   }
 
   /**
@@ -502,8 +502,8 @@ export class Client {
    */
   manageRbac(createInput = defaultRbacInputCallback, getUsers = defaultRbacUsersCallback, onSetBinding = defaultRbacOnSetBindingCallback, pageSize = 0) {
     const manager = new RbacManager(this, createInput, getUsers, onSetBinding, pageSize)
-    return (request, response) => {
-      manager.handle(request, response)
+    return async (request, response) => {
+      await manager.handle(request, response)
     }
   }
 }

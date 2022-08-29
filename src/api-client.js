@@ -43,8 +43,8 @@ export class ApiClient {
     this.eventListeners = eventListeners
   }
 
-  async signalEvent(type, info) {
-    this.eventListeners.forEach(async (listener) => listener(type, info))
+  signalEvent(type, info) {
+    this.eventListeners.forEach((listener) => listener(type, info))
   }
 
   async get(path) {

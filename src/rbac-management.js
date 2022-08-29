@@ -18,7 +18,26 @@ const RbacPath = {
 const JSON_CONTENT_TYPE = {'Content-Type': 'application/json'}
 const TEXT_CONTENT_TYPE = {'Content-Type': 'text/plain'}
 
-export class Manager {
+/**
+ * RBAC management authorization policy input document
+ *
+ * @typedef {Object} RbacInputDocument
+ * @property {string} subject the subject identifying the user performing the RBAC operation
+ * @property {string} tenant the tenant of the user performing the RBAC operation
+ */
+
+/**
+ * Callback for constructing the `input` document for RBAC management authorization policy checks.
+ * The `tenant` property of this document is also used for `user_bindings` data queries, and is required.
+ *
+ * @callback CreateInput
+ * @returns {RbacInputDocument}
+ */
+
+/**
+ * RBAC management client.
+ */
+export class RbacManager {
   constructor(styraRunClient, createInput, getUsers, onSetBinding, pageSize) {
     this.styraRunClient = styraRunClient
     this.createInput = createInput
@@ -30,7 +49,7 @@ export class Manager {
   async getRoles(input) {
     await this.styraRunClient.assert(RbacPath.AUTHZ, input)
 
-    const roles = await this.styraRunClient.query(RbacPath.ROLES, input)
+    const roles = await this.styraRunClient.query(RbacPath.ROLES)
       .then(resp => resp.result)
 
     this.styraRunClient.signalEvent(EventType.GET_ROLES, {input, roles})

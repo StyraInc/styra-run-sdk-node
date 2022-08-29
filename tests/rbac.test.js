@@ -67,9 +67,7 @@ describe("Roles can be fetched", () => {
         expect(httpSpy.checkAuthzUrl).toHaveBeenCalledWith(jasmine.objectContaining({
           body: {input: authzInput}
         }))
-        expect(httpSpy.getRolesUrl).toHaveBeenCalledWith(jasmine.objectContaining({
-          body: {input: authzInput}
-        }))
+        expect(httpSpy.getRolesUrl).toHaveBeenCalledTimes(1)
       })
     }
   }
