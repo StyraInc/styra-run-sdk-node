@@ -810,11 +810,11 @@ describe("Proxy", () => {
 })
 
 function toProxyRequestBody(path, input) {
-  return [{path, input}]
+  return {items: [{path, input}]}
 }
 
 function toProxyResponseBody(result) {
-  return [result]
+  return {result: [{check: result}]}
 }
 
 function toApiBatchRequestBody(path, input) {

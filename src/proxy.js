@@ -34,15 +34,15 @@ export default class Proxy {
       }
 
       const body = await getBody(request)
-      const queries = fromJson(body)
+      const batchQuery = fromJson(body)
 
-      if (!Array.isArray(queries)) {
+      if (!Array.isArray(batchQuery.items)) {
         response.writeHead(400, {'Content-Type': 'text/html'})
         response.end('invalid proxy request')
         return
       }
 
-      const batchItemPromises = queries.map((query, i) => {
+      const batchItemPromises = batchQuery.items.map((query, i) => {
         return new Promise(async (resolve, reject) => {
           const path = query.path
           if (path === undefined) {
@@ -59,12 +59,14 @@ export default class Proxy {
       })
 
       const batchItems = await Promise.all(batchItemPromises)
-      const batchResult = await this.styraRunClient.batchQuery(batchItems)
-      const result = (batchResult ?? []).map((item) => item.check ?? {})
+      const batchResult = await this.styraRunClient.batchQuery(batchItems, batchQuery.input)
+      this.styraRunClient.signalEvent(EventType.PROXY, {query: batchQuery, result: batchResult})
 
-      this.styraRunClient.signalEvent(EventType.PROXY, {queries, result})
+      const result = (batchResult || [])
+        .map((item) => item.check ? item : {}) // Not forwarding errors to front-end
+
       response.writeHead(200, {'Content-Type': 'application/json'})
-      response.end(toJson(result))
+      response.end(toJson({result}))
     } catch (err) {
       this.styraRunClient.signalEvent(EventType.PROXY, {err})
       response.writeHead(500, {'Content-Type': 'text/html'})

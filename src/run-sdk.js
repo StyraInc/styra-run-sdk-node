@@ -52,7 +52,7 @@ export class StyraRunClient {
   }
 
   /**
-   * @typedef {{result: *}|{}} CheckResult
+   * @typedef {{result: *}|{}} QueryResult
    */
   /**
    * Makes an authorization query against a policy rule specified by `path`.
@@ -66,7 +66,7 @@ export class StyraRunClient {
    *
    * @param {string} path the path to the policy rule to query
    * @param {*|undefined} input the input document for the query (optional)
-   * @returns {Promise<CheckResult,StyraRunError>}
+   * @returns {Promise<QueryResult,StyraRunError>}
    */
   async query(path, input = undefined) {
     const query = input ? {input} : {}
@@ -308,7 +308,7 @@ export class StyraRunClient {
     try {
       const filteredList = []
       list.forEach(async (v, i) => { 
-        if(await predicate(decisionList[i]?.check)) {
+        if (await predicate(decisionList[i]?.check)) {
           filteredList.push(v)
         }
       })
