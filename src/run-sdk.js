@@ -4,6 +4,7 @@ import { StyraRunError, StyraRunAssertionError, StyraRunHttpError } from "./erro
 import { getBody, toJson, fromJson } from "./helpers.js"
 import { RbacManager } from "./rbac-management.js"
 import { BATCH_MAX_ITEMS } from "./constants.js"
+import Proxy from "./proxy.js"
 
 // TODO: Add support for versioning/ETags for data API requests
 // TODO: Add support for fail-over/retry when server connection is broken
@@ -17,7 +18,6 @@ const EventType = {
   BATCH_QUERY: 'batch-query',
   CHECK: 'check',
   FILTER: 'filter',
-  PROXY: 'proxy',
   QUERY: 'query'
 }
 
@@ -395,67 +395,26 @@ export class StyraRunClient {
   }
 
   /**
-   * @callback OnProxyCallback
+   * A request handler providing a proxy endpoint for use with the Styra Run front-end SDK.
+   *
+   * @callback ProxyHandler
    * @param {IncomingMessage} request the incoming HTTP request
    * @param {OutgoingMessage} response the outgoing HTTP response
-   * @param {string} path the path to the policy rule being queried
-   * @param {*} input the input document/value for the policy query
-   * @returns the input document/value that should be used for the proxied policy query
    */
+
   /**
    * Returns an HTTP proxy function
    *
    * @param {OnProxyCallback} onProxy callback called for every proxied policy query
-   * @returns {(Function(*, *): Promise)}
+   * @returns {ProxyHandler}
    */
   proxy(onProxy = defaultOnProxyHandler) {
+    const proxy = new Proxy(this, onProxy)
     return async (request, response) => {
-      try {
-        if (request.method !== 'POST') {
-          response.writeHead(405, {'Content-Type': 'text/html'})
-          response.end('Method Not Allowed!')
-          return
-        }
-
-        const body = await getBody(request)
-        const queries = fromJson(body)
-
-        if (!Array.isArray(queries)) {
-          response.writeHead(400, {'Content-Type': 'text/html'})
-          response.end('invalid proxy request')
-          return
-        }
-
-        const batchItemPromises = queries.map((query, i) => {
-          return new Promise(async (resolve, reject) => {
-            const path = query.path
-            if (path === undefined) {
-              reject(new StyraRunError(`proxied query with index ${i} has missing 'path'`))
-            }
-
-            try {
-              let input = await onProxy(request, response, path, query.input)
-              resolve({path, input})
-            } catch (err) {
-              reject(new StyraRunError('Error transforming input', path, err))
-            }
-          })
-        })
-
-        const batchItems = await Promise.all(batchItemPromises)
-        const batchResult = await this.batchQuery(batchItems)
-        const result = (batchResult ?? []).map((item) => item.check ?? {})
-
-        this.signalEvent(EventType.PROXY, {queries, result})
-        response.writeHead(200, {'Content-Type': 'application/json'})
-        response.end(toJson(result))
-      } catch (err) {
-        this.signalEvent(EventType.PROXY, {err})
-        response.writeHead(500, {'Content-Type': 'text/html'})
-        response.end('policy check failed')
-      }
+      await proxy.doProxy(request, response);
     }
   }
+
 
   /**
    * A request handler providing an RBAC management endpoint.
@@ -496,7 +455,7 @@ function defaultRbacOnSetBindingCallback(_, __) {
 
 function defaultRbacInputCallback(_) {
   return {}
-} 
+}
 
 function defaultOnProxyHandler(_, __, ___, input) {
   return input
@@ -512,5 +471,5 @@ function defaultOnProxyHandler(_, __, ___, input) {
  * @constructor
  */
 export default function New(url, token, options = {}) {
-  return new StyraRunClient(url, token, options);
+  return new StyraRunClient(url, token, options)
 }
