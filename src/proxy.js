@@ -50,7 +50,7 @@ export default class Proxy {
           }
 
           try {
-            let input = await this.onProxy(request, response, path, query.input)
+            const input = await this.onProxy(request, response, path, query.input)
             resolve({path, input})
           } catch (err) {
             reject(new StyraRunError('Error transforming input', path, err))
