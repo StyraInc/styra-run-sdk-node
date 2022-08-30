@@ -140,7 +140,7 @@ export class RbacManager {
           page = pageStr ? parseInt(pageStr) : undefined
         }
 
-        const offset = Math.max((page ?? 0) - 1, 0) * this.pageSize
+        const offset = Math.max((page || 0) - 1, 0) * this.pageSize
         const users = this.getUsers(offset, this.pageSize, request)
 
         responseBody = await this.getBindings(input, users)
