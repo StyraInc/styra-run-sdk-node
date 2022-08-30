@@ -95,7 +95,7 @@ export class RbacManager {
     return roles
   }
 
-  async getBindings(input, users) {
+  async getUserBindings(input, users) {
     await this.styraRunClient.assert(RbacPath.AUTHZ, input)
 
     const bindings = await Promise.all(users.map(async (id) => {
@@ -109,7 +109,7 @@ export class RbacManager {
     return bindings
   }
 
-  async setBinding(binding, input) {
+  async setUserBinding(binding, input) {
     await this.styraRunClient.assert(RbacPath.AUTHZ, input)
 
     try {
@@ -121,7 +121,7 @@ export class RbacManager {
     }
   }
 
-  async deleteBinding(id, input) {
+  async deleteUserBinding(id, input) {
     await this.styraRunClient.assert(RbacPath.AUTHZ, input)
 
     try {
@@ -160,16 +160,15 @@ export class RbacManager {
         const offset = Math.max((page || 0) - 1, 0) * this.pageSize
         const users = await this.getUsers(offset, this.pageSize, request)
 
-        responseBody = await this.getBindings(input, users)
+        responseBody = await this.getUserBindings(input, users)
       } else if (request.method === PUT && pathEndsWith(url, ['user_bindings', '*'])) {
         const {id} = parsePathParameters(url, ['user_bindings', ':id'])
         const body = await getBody(request)
         const binding = await sanitizeBinding(id, fromJson(body), request, this.onSetBinding)
-
-        responseBody = await this.setBinding(binding, input)
+        responseBody = await this.setUserBinding(binding, input)
       } else if (request.method === DELETE && pathEndsWith(url, ['user_bindings', '*'])) {
         const {id} = parsePathParameters(url, ['user_bindings', ':id'])
-        responseBody = await this.deleteBinding(id, input)
+        responseBody = await this.deleteUserBinding(id, input)
       } else {
         response.writeHead(404, TEXT_CONTENT_TYPE)
         response.end('Not Found')
