@@ -487,3 +487,151 @@ describe("Bindings can be upserted", () => {
     })
   })
 })
+
+describe("Bindings can be deleted", () => {
+  let httpSpy
+
+  const port = 8082
+  const basePath = 'v1/projects/user1/proj1/envs/env1'
+  const sdkClient = StyraRun('http://placeholder', 'foobar')
+  sdkClient.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
+
+  beforeAll(function(done) {
+    httpSpy = serverSpy.createSpyObj('mockServer', [
+      {
+        method: 'post',
+        url: `/${basePath}/data/rbac/manage/allow`,
+        handlerName: 'checkAuthzUrl'
+      },
+      {
+        method: 'delete',
+        url: `/${basePath}/data/rbac/user_bindings/acmecorp/alice`,
+        handlerName: 'deleteAliceBindingUrl'
+      },
+      {
+        method: 'delete',
+        url: `/${basePath}/data/rbac/user_bindings/acmecorp/bob`,
+        handlerName: 'deleteBobBindingUrl'
+      },
+      {
+        method: 'delete',
+        url: `/${basePath}/data/rbac/user_bindings/acmecorp/charles`,
+        handlerName: 'deleteCharlesBindingUrl'
+      }
+    ])
+
+    httpSpy.server.start(8082, done)
+  })
+
+  afterAll(function(done) {
+    httpSpy.server.stop(done)
+  })
+
+  afterEach(function() {
+    httpSpy.checkAuthzUrl.calls.reset();
+    httpSpy.deleteAliceBindingUrl.calls.reset();
+    httpSpy.deleteBobBindingUrl.calls.reset();
+    httpSpy.deleteCharlesBindingUrl.calls.reset();
+  })
+
+  it("ok", () => {
+    return async () => {
+      const authzInput = {tenant: 'acmecorp', subject: 'alice'}
+
+      httpSpy.checkAuthzUrl.and.returnValue({
+        statusCode: 200,
+        body: {
+          result: true
+        }
+      })
+
+      httpSpy.putAliceBindingUrl.and.returnValue({
+        statusCode: 200,
+        body: {}
+      })
+
+      const server = http.createServer()
+      server.addListener('request', sdkClient.manageRbac(
+        () => { return authzInput }))
+
+      await withServer(server, 8081, async () => {
+        const {response, body} = await clientRequest(8081, 'DELETE', '/user_bindings/alice')
+
+        expect(response.statusCode).toBe(200)
+        expect(httpSpy.checkAuthzUrl).toHaveBeenCalledWith(jasmine.objectContaining({
+          body: {input: authzInput}
+        }))
+
+        expect(httpSpy.deleteAliceBindingUrl).toHaveBeenCalledTimes(1)
+        expect(httpSpy.deleteBobBindingUrl).toHaveBeenCalledTimes(0)
+        expect(httpSpy.deleteCharlesBindingUrl).toHaveBeenCalledTimes(0)
+      })
+    }
+  })
+
+  const assertErrorResponse = (statusCode) => {
+    return async () => {
+      const authzInput = {tenant: 'acmecorp', subject: 'alice'}
+
+      httpSpy.checkAuthzUrl.and.returnValue({
+        statusCode: 200,
+        body: {
+          result: true
+        }
+      })
+
+      httpSpy.deleteAliceBindingUrl.and.returnValue({
+        statusCode: statusCode
+      })
+
+      const server = http.createServer()
+      server.addListener('request', sdkClient.manageRbac(
+        () => { return authzInput }))
+
+      await withServer(server, 8081, async () => {
+        const {response} = await clientRequest(8081, 'DELETE', '/user_bindings/alice')
+
+        expect(response.statusCode).toBe(500)
+        expect(httpSpy.checkAuthzUrl).toHaveBeenCalledWith(jasmine.objectContaining({
+          body: {input: authzInput}
+        }))
+
+        expect(httpSpy.deleteAliceBindingUrl).toHaveBeenCalledTimes(1)
+        expect(httpSpy.deleteBobBindingUrl).toHaveBeenCalledTimes(0)
+        expect(httpSpy.deleteCharlesBindingUrl).toHaveBeenCalledTimes(0)
+      })
+    }
+  }
+
+  it("not found", assertErrorResponse(400))
+  it("not found", assertErrorResponse(404))
+  it("not found", assertErrorResponse(500))
+
+  it("unauthorized", async () => {
+    const authzInput = {tenant: 'acmecorp', subject: 'alice'}
+
+    httpSpy.checkAuthzUrl.and.returnValue({
+      statusCode: 200,
+      body: {}
+    })
+
+    httpSpy.deleteAliceBindingUrl.and.returnValue({
+      statusCode: 200
+    })
+
+    const server = http.createServer()
+    server.addListener('request', sdkClient.manageRbac(() => { return authzInput }))
+
+    await withServer(server, 8081, async () => {
+      const {response, body} = await clientRequest(8081, 'DELETE', '/user_bindings/alice',
+        JSON.stringify(['foo']))
+
+      expect(response.statusCode).toBe(403)
+      expect(body).toEqual('Forbidden')
+      expect(httpSpy.checkAuthzUrl).toHaveBeenCalledWith(jasmine.objectContaining({
+        body: {input: authzInput}
+      }))
+      expect(httpSpy.deleteAliceBindingUrl).toHaveBeenCalledTimes(0)
+    })
+  })
+})

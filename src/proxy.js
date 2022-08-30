@@ -1,5 +1,8 @@
 import {StyraRunError} from "./errors.js";
 import {fromJson, getBody, toJson} from "./helpers.js";
+import {Method} from "./types.js";
+
+const { POST } = Method
 
 const EventType = {
   PROXY: 'proxy'
@@ -27,7 +30,7 @@ export default class Proxy {
 
   async doProxy(request, response) {
     try {
-      if (request.method !== 'POST') {
+      if (request.method !== POST) {
         response.writeHead(405, {'Content-Type': 'text/html'})
         response.end('Method Not Allowed!')
         return
@@ -45,7 +48,7 @@ export default class Proxy {
       const batchItemPromises = batchQuery.items.map((query, i) => {
         return new Promise(async (resolve, reject) => {
           const path = query.path
-          if (path === undefined) {
+          if (!path) {
             reject(new StyraRunError(`proxied query with index ${i} has missing 'path'`))
           }
 

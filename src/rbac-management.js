@@ -1,12 +1,16 @@
 import Url from "url"
 import { getBody, toJson, fromJson, pathEndsWith, parsePathParameters } from "./helpers.js"
 import { StyraRunError } from "./errors.js"
+import { Method } from "./types.js"
+
+const { GET, PUT, DELETE } = Method
 
 const EventType = {
   RBAC: 'rbac',
   GET_ROLES: 'rbac-get-roles',
   GET_BINDINGS: 'rbac-get-bindings',
-  SET_BINDING: 'rbac-set-binding'
+  SET_BINDING: 'rbac-set-binding',
+  DELETE_BINDING: 'rbac-delete-binding'
 }
 
 const RbacPath = {
@@ -116,6 +120,19 @@ export class RbacManager {
       throw new BackendError('Binding update failed', err)
     }
   }
+
+  async deleteBinding(id, input) {
+    await this.styraRunClient.assert(RbacPath.AUTHZ, input)
+
+    try {
+      await this.styraRunClient.deleteData(`${RbacPath.BINDINGS_PREFIX}/${input.tenant}/${id}`)
+      this.styraRunClient.signalEvent(EventType.DELETE_BINDING, {id, input})
+    } catch (err) {
+      this.styraRunClient.signalEvent(EventType.DELETE_BINDING, {id, input, err})
+      throw new BackendError('Binding update failed', err)
+    }
+  }
+
   /**
    * A request handler providing an RBAC management endpoint.
    *
@@ -128,9 +145,9 @@ export class RbacManager {
       const input = await this.createInput(request)
       const url = Url.parse(request.url)
 
-      if (request.method === 'GET' && pathEndsWith(url, ['roles'])) {
+      if (request.method === GET && pathEndsWith(url, ['roles'])) {
         responseBody = await this.getRoles(input)
-      } else if (request.method === 'GET' && pathEndsWith(url, ['user_bindings'])) {
+      } else if (request.method === GET && pathEndsWith(url, ['user_bindings'])) {
         let page
 
         if (url.query) {
@@ -141,15 +158,18 @@ export class RbacManager {
         }
 
         const offset = Math.max((page || 0) - 1, 0) * this.pageSize
-        const users = this.getUsers(offset, this.pageSize, request)
+        const users = await this.getUsers(offset, this.pageSize, request)
 
         responseBody = await this.getBindings(input, users)
-      } else if (request.method === 'PUT' && pathEndsWith(url, ['user_bindings', '*'])) {
-        const params = parsePathParameters(url, ['user_bindings', ':id'])
+      } else if (request.method === PUT && pathEndsWith(url, ['user_bindings', '*'])) {
+        const {id} = parsePathParameters(url, ['user_bindings', ':id'])
         const body = await getBody(request)
-        const binding = await sanitizeBinding(params.id, fromJson(body), request, this.onSetBinding)
+        const binding = await sanitizeBinding(id, fromJson(body), request, this.onSetBinding)
 
         responseBody = await this.setBinding(binding, input)
+      } else if (request.method === DELETE && pathEndsWith(url, ['user_bindings', '*'])) {
+        const {id} = parsePathParameters(url, ['user_bindings', ':id'])
+        responseBody = await this.deleteBinding(id, input)
       } else {
         response.writeHead(404, TEXT_CONTENT_TYPE)
         response.end('Not Found')
