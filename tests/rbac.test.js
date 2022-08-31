@@ -1,6 +1,7 @@
 import http from "node:http"
 import serverSpy from "jasmine-http-server-spy"
 import Url from "url"
+import {Paginators} from "../src/rbac-management.js";
 import StyraRun from "../src/run-sdk.js"
 import { clientRequest, withServer } from "./helpers.js"
 
@@ -57,7 +58,11 @@ describe("Roles can be fetched", () => {
       })
   
       const server = http.createServer()
-      server.addListener('request', sdkClient.manageRbac(() => { return authzInput }))
+      server.addListener('request', sdkClient.manageRbac({
+        createInputDocument: () => {
+          return authzInput
+        }
+      }))
   
       await withServer(server, 8081, async () => {
         const {response, body} = await clientRequest(8081, 'GET', '/roles')
@@ -92,7 +97,11 @@ describe("Roles can be fetched", () => {
     })
 
     const server = http.createServer()
-    server.addListener('request', sdkClient.manageRbac(() => { return authzInput }))
+    server.addListener('request', sdkClient.manageRbac({
+      createInputDocument: () => {
+        return authzInput
+      }
+    }))
 
     await withServer(server, 8081, async () => {
       const {response, body} = await clientRequest(8081, 'GET', '/roles')
@@ -215,24 +224,29 @@ describe("Bindings can be fetched", () => {
           body: notFoundResponseBody
         })
       }
+
+      const userProducer = (offset, limit, _) => {
+        if (limit === 0) {
+          return users.slice(offset)
+        }
+        return users.slice(offset, offset + limit)
+      }
   
       const server = http.createServer()
       server.addListener('request', sdkClient.manageRbac(
-        () => { return authzInput },
-        (offset, limit, _) => {
-          if (limit === 0) {
-            return users.slice(offset)
-          }
-          return users.slice(offset, offset + limit)
-        },
-        () => true,
-        (page !== undefined ? 2 : 0)))
+        {
+          createInputDocument: () => {
+            return authzInput
+          },
+          getUsers: Paginators.makeIndexedPaginator((page !== undefined ? 2 : 0), userProducer),
+          onSetBinding: () => true
+        }))
   
       await withServer(server, 8081, async () => {
         const {response, body} = await clientRequest(8081, 'GET', '/user_bindings' + (page !== undefined ? `?page=${page}` : ''))
   
         expect(response.statusCode).toBe(200)
-        expect(JSON.parse(body)).toEqual(expectedBindings)
+        expect(JSON.parse(body).result).toEqual(expectedBindings)
         expect(httpSpy.checkAuthzUrl).toHaveBeenCalledWith(jasmine.objectContaining({
           body: {input: authzInput}
         }))
@@ -261,43 +275,43 @@ describe("Bindings can be fetched", () => {
     bob: ['Viewer'],
     charles: ['foo', 'bar']
   }))
-  
+
   it("bindings page 1", assertOkResponse(
-    ['alice', 'bob', 'charles'], 
+    ['alice', 'bob', 'charles'],
     {
       alice: ['ADMIN'],
       bob: [],
       charles: ['foo', 'bar'],
-    }, 
-    [{id: 'alice', roles: ['ADMIN']}, {id: 'bob', roles: []}], 
+    },
+    [{id: 'alice', roles: ['ADMIN']}, {id: 'bob', roles: []}],
     1))
   it("bindings page 2", assertOkResponse(
-    ['alice', 'bob', 'charles'], 
+    ['alice', 'bob', 'charles'],
     {
       alice: ['ADMIN'],
       bob: [],
       charles: ['foo', 'bar'],
-    }, 
-    [{id: 'charles', roles: ['foo', 'bar']}], 
+    },
+    [{id: 'charles', roles: ['foo', 'bar']}],
     2))
   // requesting page 0 should return page 1
   it("bindings page 0", assertOkResponse(
-    ['alice', 'bob', 'charles'], 
+    ['alice', 'bob', 'charles'],
     {
       alice: ['ADMIN'],
       bob: [],
       charles: ['foo', 'bar'],
-    }, 
-    [{id: 'alice', roles: ['ADMIN']}, {id: 'bob', roles: []}], 
+    },
+    [{id: 'alice', roles: ['ADMIN']}, {id: 'bob', roles: []}],
     0))
   it("bindings page 500", assertOkResponse(
-    ['alice', 'bob', 'charles'], 
+    ['alice', 'bob', 'charles'],
     {
       alice: ['ADMIN'],
       bob: [],
       charles: ['foo', 'bar'],
-    }, 
-    [], 
+    },
+    [],
     500))
 
   it("unauthorized", async () => {
@@ -316,7 +330,11 @@ describe("Bindings can be fetched", () => {
     })
 
     const server = http.createServer()
-    server.addListener('request', sdkClient.manageRbac(() => { return authzInput }))
+    server.addListener('request', sdkClient.manageRbac({
+      createInputDocument: () => {
+        return authzInput
+      }
+    }))
 
     await withServer(server, 8081, async () => {
       const {response, body} = await clientRequest(8081, 'GET', '/user_bindings')
@@ -396,7 +414,11 @@ describe("Bindings can be upserted", () => {
   
       const server = http.createServer()
       server.addListener('request', sdkClient.manageRbac(
-        () => { return authzInput }))
+        {
+          createInputDocument: () => {
+            return authzInput
+          }
+        }))
   
       await withServer(server, 8081, async () => {
         const {response, body} = await clientRequest(8081, 'PUT', '/user_bindings/alice', JSON.stringify(roles))
@@ -433,7 +455,11 @@ describe("Bindings can be upserted", () => {
   
       const server = http.createServer()
       server.addListener('request', sdkClient.manageRbac(
-        () => { return authzInput }))
+        {
+          createInputDocument: () => {
+            return authzInput
+          }
+        }))
   
       await withServer(server, 8081, async () => {
         const {response} = await clientRequest(8081, 'PUT', '/user_bindings/alice', JSON.stringify(roles))
@@ -472,7 +498,11 @@ describe("Bindings can be upserted", () => {
     })
 
     const server = http.createServer()
-    server.addListener('request', sdkClient.manageRbac(() => { return authzInput }))
+    server.addListener('request', sdkClient.manageRbac({
+      createInputDocument: () => {
+        return authzInput
+      }
+    }))
 
     await withServer(server, 8081, async () => {
       const {response, body} = await clientRequest(8081, 'PUT', '/user_bindings/alice', 
@@ -552,7 +582,11 @@ describe("Bindings can be deleted", () => {
 
       const server = http.createServer()
       server.addListener('request', sdkClient.manageRbac(
-        () => { return authzInput }))
+        {
+          createInputDocument: () => {
+            return authzInput
+          }
+        }))
 
       await withServer(server, 8081, async () => {
         const {response, body} = await clientRequest(8081, 'DELETE', '/user_bindings/alice')
@@ -586,7 +620,11 @@ describe("Bindings can be deleted", () => {
 
       const server = http.createServer()
       server.addListener('request', sdkClient.manageRbac(
-        () => { return authzInput }))
+        {
+          createInputDocument: () => {
+            return authzInput
+          }
+        }))
 
       await withServer(server, 8081, async () => {
         const {response} = await clientRequest(8081, 'DELETE', '/user_bindings/alice')
@@ -620,7 +658,11 @@ describe("Bindings can be deleted", () => {
     })
 
     const server = http.createServer()
-    server.addListener('request', sdkClient.manageRbac(() => { return authzInput }))
+    server.addListener('request', sdkClient.manageRbac({
+      createInputDocument: () => {
+        return authzInput
+      }
+    }))
 
     await withServer(server, 8081, async () => {
       const {response, body} = await clientRequest(8081, 'DELETE', '/user_bindings/alice',
@@ -633,5 +675,61 @@ describe("Bindings can be deleted", () => {
       }))
       expect(httpSpy.deleteAliceBindingUrl).toHaveBeenCalledTimes(0)
     })
+  })
+})
+
+describe('indexed paginator', () => {
+  it('can translate page index to offset and limit', () => {
+    const assertOffsetAndLimit = (pageSize, index, expectedOffset) => {
+      const expectedLimit = pageSize
+      let appliedOffset
+      let appliedLimit
+
+      const paginator = Paginators.makeIndexedPaginator(pageSize, async (offset, limit, _) => {
+        appliedOffset = offset
+        appliedLimit = limit
+        return []
+      })
+
+      paginator(`${index}`, undefined)
+
+      expect(appliedOffset).toBe(expectedOffset)
+      expect(appliedLimit).toBe(expectedLimit)
+    }
+
+    assertOffsetAndLimit(0, 0, 0)
+    assertOffsetAndLimit(0, 1, 0)
+    assertOffsetAndLimit(0, 10, 0)
+    assertOffsetAndLimit(1, 0, 0)
+    assertOffsetAndLimit(1, 1, 0)
+    assertOffsetAndLimit(1, 2, 1)
+    assertOffsetAndLimit(1, 10, 9)
+    assertOffsetAndLimit(10, 0, 0)
+    assertOffsetAndLimit(10, 1, 0)
+    assertOffsetAndLimit(10, 2, 10)
+    assertOffsetAndLimit(10, 10, 90)
+  })
+
+  it('returned serialized page object has expected meta', () => {
+    const assertResult = async (pageSize, getCount, expectedPageCount) => {
+      const index = 0//Math.floor(Math.random() * 10)
+      const paginator = Paginators.makeIndexedPaginator(pageSize, async (offset, limit, _) => {
+        return ['alice', 'bob']
+      }, getCount)
+
+      const result = await paginator(`${index}`, undefined)
+
+      expect(result.result).toEqual(['alice', 'bob'])
+
+      const page = result.page ? JSON.parse(result.page) : undefined
+
+      expect(page?.index).toBe(index)
+      expect(page?.of).toBe(expectedPageCount)
+    }
+
+    assertResult(0, undefined, 1)
+    assertResult(0, () => 0, 1)
+    assertResult(1, () => 10, 10)
+    assertResult(2, () => 10, 5)
   })
 })

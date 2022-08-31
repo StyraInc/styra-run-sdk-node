@@ -54,6 +54,7 @@ export class StyraRunClient {
   /**
    * @typedef {{result: *}|{}} QueryResult
    */
+
   /**
    * Makes an authorization query against a policy rule specified by `path`.
    * Where `path` is the trailing segment of the full request path 
@@ -62,10 +63,8 @@ export class StyraRunClient {
    * Returns a `Promise` that on a successful Styra Run API response resolves to the response body dictionary, e.g.: `{"result": ...}`.
    * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
    *
-   * {@link LoadResultPromise}
-   *
    * @param {string} path the path to the policy rule to query
-   * @param {*|undefined} input the input document for the query (optional)
+   * @param {*|undefined} input the input document/value for the query (optional)
    * @returns {Promise<QueryResult,StyraRunError>}
    */
   async query(path, input = undefined) {
@@ -84,9 +83,10 @@ export class StyraRunClient {
 
   /**
    * @callback DecisionPredicate
-   * @param {CheckResult} decision
+   * @param {QueryResult} decision
    * @returns {Boolean} `true` if `decision` is valid, `false` otherwise
    */
+
   /**
    * Makes an authorization check against a policy rule specified by `path`.
    * Where `path` is the trailing segment of the full request path
@@ -108,7 +108,7 @@ export class StyraRunClient {
    * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
    *
    * @param {string} path the path to the policy rule to query
-   * @param {Object<string, *>|*|undefined} input the input document for the query (optional)
+   * @param {*|undefined} input the input document/value for the query (optional)
    * @param {DecisionPredicate|undefined} predicate a callback function, taking a query response dictionary as arg, returning true/false (optional)
    * @returns {Promise<boolean, StyraRunError>}
    */
@@ -146,7 +146,7 @@ export class StyraRunClient {
    * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
    *
    * @param {string} path the path to the policy rule to query
-   * @param {Object<string, any>} input the input document for the query
+   * @param {*|undefined} input the input document for the query
    * @param {DecisionPredicate} predicate a callback function, taking a query response dictionary as arg, returning true/false
    * @returns {Promise<undefined, StyraRunError|StyraRunAssertionError>}
    * @see {@link check}
@@ -177,11 +177,11 @@ export class StyraRunClient {
    *   .catch((err) => { ... })
    * ```
    *
-   * @param data optional value to return on asserted
-   * @param path the path to the policy rule to query
-   * @param input the input document for the query
+   * @param {*} data value to return on asserted
+   * @param {string} path the path to the policy rule to query
+   * @param {*|undefined} input the input document for the query
    * @param predicate a callback function, taking a response body dictionary as arg, returning true/false
-   * @returns {Promise<?, StyraRunError>}
+   * @returns {Promise<*, StyraRunError>}
    * @see {@link assert}
    */
   async assertAndReturn(data, path, input = undefined, predicate = defaultPredicate) {
@@ -192,12 +192,15 @@ export class StyraRunClient {
   /**
    * @typedef {{path: string, input: *}} BatchQuery
    */
+
   /**
    * @typedef {{code: string, message: string}} CheckError
    */
+
   /**
-   * @typedef {{check: CheckResult}|{error: CheckError}} BatchCheckItemResult
+   * @typedef {{check: QueryResult}|{error: CheckError}} BatchCheckItemResult
    */
+
   /**
    * @typedef {BatchCheckItemResult[]} BatchCheckResult
    */
@@ -399,7 +402,7 @@ export class StyraRunClient {
    *
    * @callback ProxyHandler
    * @param {IncomingMessage} request the incoming HTTP request
-   * @param {OutgoingMessage} response the outgoing HTTP response
+   * @param {ServerResponse} response the outgoing HTTP response
    */
 
   /**
@@ -421,20 +424,24 @@ export class StyraRunClient {
    *
    * @callback RbacHandler
    * @param {IncomingMessage} request the incoming HTTP request
-   * @param {OutgoingMessage} response the outgoing HTTP response
+   * @param {ServerResponse} response the outgoing HTTP response
    */
 
   /**
    * Returns an HTTP API function.
    *
-   * @param {CreateRbacInputCallback} createInput
+   * @param {CreateRbacInputDocumentCallback} createInputDocument
    * @param {GetRbacUsersCallback} getUsers
    * @param {OnSetRbacBindingCallback} onSetBinding
    * @param {number} pageSize `integer` representing the size of each page of enumerated user bindings
    * @returns {RbacHandler}
    */
-  manageRbac(createInput = defaultRbacInputCallback, getUsers = defaultRbacUsersCallback, onSetBinding = defaultRbacOnSetBindingCallback, pageSize = 0) {
-    const manager = new RbacManager(this, createInput, getUsers, onSetBinding, pageSize)
+  manageRbac({
+               createInputDocument = defaultRbacInputDocumentCallback,
+               getUsers = defaultRbacUsersCallback,
+               onSetBinding = defaultRbacOnSetBindingCallback
+             }) {
+    const manager = new RbacManager(this, createInputDocument, getUsers, onSetBinding)
     return async (request, response) => {
       await manager.handle(request, response)
     }
@@ -445,19 +452,19 @@ export function defaultPredicate(decision) {
   return decision?.result === true
 }
 
-function defaultRbacUsersCallback(_, __) {
+async function defaultRbacUsersCallback(_, __) {
   return []
-} 
+}
 
-function defaultRbacOnSetBindingCallback(_, __) {
+async function defaultRbacOnSetBindingCallback(_, __, ___) {
   return true
-} 
+}
 
-function defaultRbacInputCallback(_) {
+async function defaultRbacInputDocumentCallback(_) {
   return {}
 }
 
-function defaultOnProxyHandler(_, __, ___, input) {
+async function defaultOnProxyHandler(_, __, ___, input) {
   return input
 }
 

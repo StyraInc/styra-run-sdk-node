@@ -34,9 +34,15 @@ const TEXT_CONTENT_TYPE = {'Content-Type': 'text/plain'}
  * Callback for constructing the `input` document for RBAC management authorization policy checks.
  * The `tenant` property of this document is also used for `user_bindings` data queries, and is required.
  *
- * @callback CreateRbacInputCallback
+ * @callback CreateRbacInputDocumentCallback
  * @param {IncomingMessage} request the incoming HTTP request
- * @returns {RbacInputDocument}
+ * @returns {Promise<RbacInputDocument>}
+ */
+
+/**
+ * @typedef {Object} PageResult
+ * @property {*[]} result
+ * @property {string} page
  */
 
 /**
@@ -45,10 +51,9 @@ const TEXT_CONTENT_TYPE = {'Content-Type': 'text/plain'}
  * If `limit` is set to `0`, no upper limit should be applied to the number of user identifiers to return.
  *
  * @callback GetRbacUsersCallback
- * @param {number} offset an integer index for where in the list of users to start enumerating
- * @param {number} limit an integer number of users to enumerate, starting at `offset`
+ * @param {string} page
  * @param {IncomingMessage} request the incoming HTTP request
- * @returns {string[]} a list if string user identifiers
+ * @returns {Promise<PageResult>} an object where the `result` property is a list if string user identifiers
  */
 
 /**
@@ -62,7 +67,7 @@ const TEXT_CONTENT_TYPE = {'Content-Type': 'text/plain'}
  * @param {string} id the user identifier for the incoming binding
  * @param {string[]} roles the roles to be bound to the user
  * @param {IncomingMessage} request the incoming HTTP request
- * @returns {boolean} `true`, if the incoming binding upsert is allowed; `false` otherwise
+ * @returns {Promise<boolean>} `true`, if the incoming binding upsert is allowed; `false` otherwise
  */
 
 /**
@@ -71,17 +76,15 @@ const TEXT_CONTENT_TYPE = {'Content-Type': 'text/plain'}
 export class RbacManager {
   /**
    * @param {StyraRunClient} styraRunClient
-   * @param {CreateRbacInputCallback} createInput
+   * @param {CreateRbacInputDocumentCallback} createInputDocument
    * @param {GetRbacUsersCallback} getUsers
    * @param {OnSetRbacBindingCallback} onSetBinding
-   * @param {number} pageSize the number of user-bindings to enumerate on each page. If `0`, pagination is disabled
    */
-  constructor(styraRunClient, createInput, getUsers, onSetBinding, pageSize) {
+  constructor(styraRunClient, createInputDocument, getUsers, onSetBinding) {
     this.styraRunClient = styraRunClient
-    this.createInput = createInput
+    this.createInputDocument = createInputDocument
     this.getUsers = getUsers
     this.onSetBinding = onSetBinding
-    this.pageSize = Math.max(pageSize, 0)
   }
 
   async getRoles(input) {
@@ -137,30 +140,22 @@ export class RbacManager {
    * A request handler providing an RBAC management endpoint.
    *
    * @param {IncomingMessage} request the incoming HTTP request
-   * @param {OutgoingMessage} response the outgoing HTTP response
+   * @param {ServerResponse} response the outgoing HTTP response
    */
   async handle(request, response) {
     let responseBody
     try {
-      const input = await this.createInput(request)
+      const input = await this.createInputDocument(request)
       const url = Url.parse(request.url)
 
       if (request.method === GET && pathEndsWith(url, ['roles'])) {
         responseBody = await this.getRoles(input)
       } else if (request.method === GET && pathEndsWith(url, ['user_bindings'])) {
-        let page
-
-        if (url.query) {
-          const searchParams = new URLSearchParams(url.query)
-          const pageStr = searchParams.get('page')
-          
-          page = pageStr ? parseInt(pageStr) : undefined
-        }
-
-        const offset = Math.max((page || 0) - 1, 0) * this.pageSize
-        const users = await this.getUsers(offset, this.pageSize, request)
-
-        responseBody = await this.getUserBindings(input, users)
+        const page = new URLSearchParams(url.query).get('page')
+        const usersResult = await this.getUsers(page, request)
+        const users = usersResult.result || []
+        const bindings = await this.getUserBindings(input, users)
+        responseBody = {result: bindings, page: usersResult.page}
       } else if (request.method === PUT && pathEndsWith(url, ['user_bindings', '*'])) {
         const {id} = parsePathParameters(url, ['user_bindings', ':id'])
         const body = await getBody(request)
@@ -194,6 +189,63 @@ export class RbacManager {
         response.writeHead(500, TEXT_CONTENT_TYPE)
         response.end('Error')
       }
+    }
+  }
+}
+
+export class Paginators {
+  /**
+   * @callback GetPagedDataCallback
+   * @param {string} page
+   * @param {IncomingMessage} request
+   * @returns {Promise<PageResult>}
+   */
+
+  /**
+   * Callback for enumerating string identifiers for known users.
+   *
+   * If `limit` is set to `0`, no upper limit should be applied to the number of user identifiers to return.
+   *
+   * @callback GetIndexedDataCallback
+   * @param {number} offset an integer index for where in the list of users to start enumerating
+   * @param {number} limit an integer number of users to enumerate, starting at `offset`
+   * @param {IncomingMessage} request the incoming HTTP request
+   * @returns {Promise<PageResult>} a list if string user identifiers
+   */
+
+  /**
+   * @callback GetTotalCountCallback
+   * @param {ServerRequest} request
+   * @returns {Promise<number>} total count of data entries available
+   */
+
+  /**
+   * A paginator that expects the `page` query parameter on the incoming HTTP request to be a positive integer
+   * specifying the index (starting at 1) of the requested page.
+   *
+   * @param {number} pageSize the number of user-bindings to enumerate on each page. If `0`, pagination is disabled
+   * @param {GetIndexedDataCallback} producer
+   * @param {GetTotalCountCallback|undefined} getTotalCount
+   * @returns {GetPagedDataCallback}
+   */
+  static makeIndexedPaginator(pageSize, producer, getTotalCount = undefined) {
+    return async (page, request) => {
+      const index = page ? parseInt(page) : 0
+      if (isNaN(index)) {
+        throw new InvalidInputError("'page' is not a valid number")
+      }
+
+      let of = undefined
+      if (pageSize === 0) {
+        of = 1
+      } else if (getTotalCount) {
+        const totalCount = await getTotalCount(request)
+        of = Math.ceil(totalCount / pageSize)
+      }
+
+      const offset = Math.max(page - 1, 0) * pageSize
+      const result = await producer(offset, pageSize, request)
+      return {result, page: toJson({index, of})}
     }
   }
 }

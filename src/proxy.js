@@ -11,15 +11,14 @@ const EventType = {
 /**
  * @callback OnProxyCallback
  * @param {IncomingMessage} request the incoming HTTP request
- * @param {OutgoingMessage} response the outgoing HTTP response
+ * @param {ServerResponse} response the outgoing HTTP response
  * @param {string} path the path to the policy rule being queried
  * @param {*} input the input document/value for the policy query
- * @returns the input document/value that should be used for the proxied policy query
+ * @returns {Promise<*>} the input document/value that should be used for the proxied policy query
  */
 
 export default class Proxy {
   /**
-   *
    * @param {StyraRunClient} styraRunClient
    * @param {OnProxyCallback} onProxy
    */
@@ -28,6 +27,11 @@ export default class Proxy {
     this.onProxy = onProxy
   }
 
+  /**
+   * @param {IncomingMessage} request
+   * @param {ServerResponse} response
+   * @returns {Promise<void>}
+   */
   async doProxy(request, response) {
     try {
       if (request.method !== POST) {
