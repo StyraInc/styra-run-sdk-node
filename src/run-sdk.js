@@ -5,6 +5,7 @@ import { getBody, toJson, fromJson } from "./helpers.js"
 import { RbacManager } from "./rbac-management.js"
 import { BATCH_MAX_ITEMS } from "./constants.js"
 import Proxy from "./proxy.js"
+import { Paginators } from "./rbac-management.js"
 
 // TODO: Add support for versioning/ETags for data API requests
 // TODO: Add support for fail-over/retry when server connection is broken
@@ -479,4 +480,8 @@ async function defaultOnProxyHandler(_, __, ___, input) {
  */
 export default function New(url, token, options = {}) {
   return new StyraRunClient(url, token, options)
+}
+
+export {
+  Paginators
 }

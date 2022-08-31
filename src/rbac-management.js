@@ -42,7 +42,7 @@ const TEXT_CONTENT_TYPE = {'Content-Type': 'text/plain'}
 /**
  * @typedef {Object} PageResult
  * @property {*[]} result
- * @property {string} page
+ * @property {*} page
  */
 
 /**
@@ -230,7 +230,7 @@ export class Paginators {
    */
   static makeIndexedPaginator(pageSize, producer, getTotalCount = undefined) {
     return async (page, request) => {
-      const index = page ? parseInt(page) : 0
+      const index = page ? Math.max(parseInt(page), 1) : 1
       if (isNaN(index)) {
         throw new InvalidInputError("'page' is not a valid number")
       }
@@ -243,9 +243,9 @@ export class Paginators {
         of = Math.ceil(totalCount / pageSize)
       }
 
-      const offset = Math.max(page - 1, 0) * pageSize
+      const offset = Math.max(index - 1, 0) * pageSize
       const result = await producer(offset, pageSize, request)
-      return {result, page: toJson({index, of})}
+      return {result, page: {index, of}}
     }
   }
 }

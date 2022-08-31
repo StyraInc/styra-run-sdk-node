@@ -712,7 +712,7 @@ describe('indexed paginator', () => {
 
   it('returned serialized page object has expected meta', () => {
     const assertResult = async (pageSize, getCount, expectedPageCount) => {
-      const index = 0//Math.floor(Math.random() * 10)
+      const index = 1
       const paginator = Paginators.makeIndexedPaginator(pageSize, async (offset, limit, _) => {
         return ['alice', 'bob']
       }, getCount)
@@ -721,10 +721,8 @@ describe('indexed paginator', () => {
 
       expect(result.result).toEqual(['alice', 'bob'])
 
-      const page = result.page ? JSON.parse(result.page) : undefined
-
-      expect(page?.index).toBe(index)
-      expect(page?.of).toBe(expectedPageCount)
+      expect(result.page?.index).toBe(index)
+      expect(result.page?.of).toBe(expectedPageCount)
     }
 
     assertResult(0, undefined, 1)
