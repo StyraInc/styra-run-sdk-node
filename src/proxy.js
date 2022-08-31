@@ -71,7 +71,7 @@ export default class Proxy {
 
       // Only forwarding result to frontend; dropping e.g. errors
       const result = (batchResult || [])
-        .map((item) => (item.check && item.check.result) ? {result: item.check.result} : {})
+        .map((item) => item.result ? {result: item.result} : {})
 
       response.writeHead(200, {'Content-Type': 'application/json'})
       response.end(toJson({result}))

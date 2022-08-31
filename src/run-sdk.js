@@ -312,7 +312,7 @@ export class StyraRunClient {
     try {
       const filteredList = []
       list.forEach(async (v, i) => { 
-        if (await predicate(decisionList[i] ? decisionList[i].check : undefined)) {
+        if (await predicate(decisionList[i])) {
           filteredList.push(v)
         }
       })
