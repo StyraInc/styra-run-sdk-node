@@ -65,8 +65,9 @@ export default class Proxy {
       const batchResult = await this.styraRunClient.batchQuery(batchItems, batchQuery.input)
       this.styraRunClient.signalEvent(EventType.PROXY, {query: batchQuery, result: batchResult})
 
+      // Only forwarding result to frontend; dropping e.g. errors
       const result = (batchResult || [])
-        .map((item) => item.check ? item : {}) // Not forwarding errors to front-end
+        .map((item) => (item.check && item.check.result) ? {result: item.check.result} : {})
 
       response.writeHead(200, {'Content-Type': 'application/json'})
       response.end(toJson({result}))

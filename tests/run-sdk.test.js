@@ -814,7 +814,7 @@ function toProxyRequestBody(path, input) {
 }
 
 function toProxyResponseBody(result) {
-  return {result: [{check: result}]}
+  return {result: [result]}
 }
 
 function toApiBatchRequestBody(path, input) {
