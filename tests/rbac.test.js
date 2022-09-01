@@ -68,7 +68,7 @@ describe("Roles can be fetched", () => {
         const {response, body} = await clientRequest(8081, 'GET', '/roles')
   
         expect(response.statusCode).toBe(200)
-        expect(JSON.parse(body)).toEqual(roles)
+        expect(JSON.parse(body)).toEqual({result: roles})
         expect(httpSpy.checkAuthzUrl).toHaveBeenCalledWith(jasmine.objectContaining({
           body: {input: authzInput}
         }))

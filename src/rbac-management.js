@@ -118,6 +118,8 @@ export class RbacManager {
     try {
       await this.styraRunClient.putData(`${RbacPath.BINDINGS_PREFIX}/${input.tenant}/${binding.id}`, binding.roles ?? [])
       this.styraRunClient.signalEvent(EventType.SET_BINDING, {binding, input})
+      // Styra Run returns an empty object on success; to not accidentally forward sensitive data to client, we return an empty object here
+      return {} 
     } catch (err) {
       this.styraRunClient.signalEvent(EventType.SET_BINDING, {binding, input, err})
       throw new BackendError('Binding update failed', err)
@@ -130,6 +132,8 @@ export class RbacManager {
     try {
       await this.styraRunClient.deleteData(`${RbacPath.BINDINGS_PREFIX}/${input.tenant}/${id}`)
       this.styraRunClient.signalEvent(EventType.DELETE_BINDING, {id, input})
+      // Styra Run returns an empty object on success; to not accidentally forward sensitive data to client, we return an empty object here
+      return {}
     } catch (err) {
       this.styraRunClient.signalEvent(EventType.DELETE_BINDING, {id, input, err})
       throw new BackendError('Binding update failed', err)
@@ -149,7 +153,8 @@ export class RbacManager {
       const url = Url.parse(request.url)
 
       if (request.method === GET && pathEndsWith(url, ['roles'])) {
-        responseBody = await this.getRoles(input)
+        const result = await this.getRoles(input)
+        responseBody = {result}
       } else if (request.method === GET && pathEndsWith(url, ['user_bindings'])) {
         const page = new URLSearchParams(url.query).get('page')
         const usersResult = await this.getUsers(page, request)
@@ -160,10 +165,12 @@ export class RbacManager {
         const {id} = parsePathParameters(url, ['user_bindings', ':id'])
         const body = await getBody(request)
         const binding = await sanitizeBinding(id, fromJson(body), request, this.onSetBinding)
-        responseBody = await this.setUserBinding(binding, input)
+        const result = await this.setUserBinding(binding, input)
+        responseBody = {result}
       } else if (request.method === DELETE && pathEndsWith(url, ['user_bindings', '*'])) {
         const {id} = parsePathParameters(url, ['user_bindings', ':id'])
-        responseBody = await this.deleteUserBinding(id, input)
+        const result = await this.deleteUserBinding(id, input)
+        responseBody = {result}
       } else {
         response.writeHead(404, TEXT_CONTENT_TYPE)
         response.end('Not Found')
