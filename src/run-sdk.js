@@ -415,7 +415,7 @@ export class StyraRunClient {
   proxy(onProxy = defaultOnProxyHandler) {
     const proxy = new Proxy(this, onProxy)
     return async (request, response) => {
-      await proxy.doProxy(request, response);
+      await proxy.handle(request, response)
     }
   }
 

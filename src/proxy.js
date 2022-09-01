@@ -32,7 +32,7 @@ export default class Proxy {
    * @param {ServerResponse} response
    * @returns {Promise<void>}
    */
-  async doProxy(request, response) {
+  async handle(request, response) {
     try {
       if (request.method !== POST) {
         response.writeHead(405, {'Content-Type': 'text/html'})
