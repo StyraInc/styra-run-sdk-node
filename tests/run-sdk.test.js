@@ -574,12 +574,12 @@ describe("Filter allowed", () => {
       statusCode: 200,
       body: {
         result: [
-        {check: {result: true}},
-        {check: {result: false}},
-        {check: {}},
-        {check: {result: 42}},
-        {check: {result: true}},
-        {check: {result: true}},
+        {result: true},
+        {result: false},
+        {},
+        {result: 42},
+        {result: true},
+        {result: true},
       ]}
     })
 
@@ -609,12 +609,12 @@ describe("Filter allowed", () => {
       statusCode: 200,
       body: {
         result: [
-        {check: {result: true}},
-        {check: {result: true}},
-        {check: {result: true}},
-        {check: {result: true}},
-        {check: {result: true}},
-        {check: {result: true}},
+        {result: true},
+        {result: true},
+        {result: true},
+        {result: true},
+        {result: true},
+        {result: true},
       ]}
     })
 
@@ -810,11 +810,11 @@ describe("Proxy", () => {
 })
 
 function toProxyRequestBody(path, input) {
-  return [{path, input}]
+  return {items: [{path, input}]}
 }
 
 function toProxyResponseBody(result) {
-  return [result]
+  return {result: [result]}
 }
 
 function toApiBatchRequestBody(path, input) {
@@ -828,9 +828,7 @@ function toApiBatchRequestBody(path, input) {
 function toApiBatchResponseBody(result) {
   return {
     result: [
-      {
-        check: result
-      }
+      result
     ]
   }
 }

@@ -40,3 +40,10 @@ export class StyraRunHttpError extends StyraRunError {
     return this.statusCode === 401
   }
 }
+
+export class TimeoutError extends Error {
+  constructor(timeout) {
+    super(`Operation took longer than ${timeout}ms`)
+    this.timeout = timeout
+  }
+}
