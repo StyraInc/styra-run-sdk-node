@@ -721,8 +721,8 @@ describe('indexed paginator', () => {
 
       expect(result.result).toEqual(['alice', 'bob'])
 
-      expect(result.page?.index).toBe(index)
-      expect(result.page?.of).toBe(expectedPageCount)
+      expect(result.page.index).toBe(index)
+      expect(result.page.of).toBe(expectedPageCount)
     }
 
     assertResult(0, undefined, 1)

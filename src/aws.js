@@ -84,5 +84,8 @@ export class AwsClient {
 }
 
 function removeTrailingSlash(str) {
-  return str?.endsWith('/') ? str.slice(0, -1) : str;
+  if (!str) {
+    return
+  }
+  return str.endsWith('/') ? str.slice(0, -1) : str
 }

@@ -282,7 +282,7 @@ describe("Gateway lookup:", () => {
         gateways = undefined
         const settled = await eventually(async () => {
             gateways = await client.getGateways()
-            return gateways?.length === 3
+            return gateways.length === 3
         })
         expect(settled).toBe(true)
         expect(organizeGatewaysCallCount).toBe(1)
@@ -805,30 +805,30 @@ describe("Default organize-gateways callback", () => {
 
     it("sorts gateways first by aws zone-id, then by region", assert(unorganizedGateways, 'region-1', 'zone-1',
         (region, zoneId, organizedGateways) => {
-            expect(organizedGateways[0]?.aws?.zone_id).toBe(zoneId)
-            expect(organizedGateways[1]?.aws?.region).toBe(region)
-            expect(organizedGateways[2]?.aws?.region).toBe(region)
+            expect(organizedGateways[0].aws.zone_id).toBe(zoneId)
+            expect(organizedGateways[1].aws.region).toBe(region)
+            expect(organizedGateways[2].aws.region).toBe(region)
         })
     )
 
     it("sorts gateways first by aws zone-id, then by region (2)", assert(unorganizedGateways, 'region-2', 'zone-3',
         (region, zoneId, organizedGateways) => {
-            expect(organizedGateways[0]?.aws?.zone_id).toBe(zoneId)
-            expect(organizedGateways[1]?.aws?.region).toBe(region)
+            expect(organizedGateways[0].aws.zone_id).toBe(zoneId)
+            expect(organizedGateways[1].aws.region).toBe(region)
         })
     )
 
     it("sorts gateways by aws zone-id if no region is available", assert(unorganizedGateways, undefined, 'zone-1',
         (_, zoneId, organizedGateways) => {
-            expect(organizedGateways[0]?.aws?.zone_id).toBe(zoneId)
+            expect(organizedGateways[0].aws.zone_id).toBe(zoneId)
         })
     )
 
     it("sorts gateways by aws region if no zone-id is available", assert(unorganizedGateways, 'region-1', undefined,
         (region, _, organizedGateways) => {
-            expect(organizedGateways[0]?.aws?.region).toBe(region)
-            expect(organizedGateways[1]?.aws?.region).toBe(region)
-            expect(organizedGateways[2]?.aws?.region).toBe(region)
+            expect(organizedGateways[0].aws.region).toBe(region)
+            expect(organizedGateways[1].aws.region).toBe(region)
+            expect(organizedGateways[2].aws.region).toBe(region)
         })
     )
 

@@ -5,7 +5,7 @@ export const NOT_ALLOWED = 'Not allowed!'
  */
 export class StyraRunError extends Error {
   constructor(message, cause = undefined) {
-    super(cause?.message ? `${message}: ${cause.message}` : message)
+    super((cause && cause.message) ? `${message}: ${cause.message}` : message)
     this.name = "StyraRunError"
     this.cause = cause
   }

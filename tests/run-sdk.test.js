@@ -104,11 +104,11 @@ describe("Query", () => {
     } catch (err) {
       expect(err.name).toBe('StyraRunError')
       expect(err.message).toBe('Query failed: Unexpected status code: 400')
-      expect(err.cause?.name).toBe('StyraRunHttpError')
-      expect(err.cause?.message).toBe('Unexpected status code: 400')
-      expect(err.cause?.statusCode).toBe(400)
-      expect(err.cause?.attempts).toBe(1)
-      expect(err.cause?.body).toBe("foo bar")
+      expect(err.cause.name).toBe('StyraRunHttpError')
+      expect(err.cause.message).toBe('Unexpected status code: 400')
+      expect(err.cause.statusCode).toBe(400)
+      expect(err.cause.attempts).toBe(1)
+      expect(err.cause.body).toBe("foo bar")
     }
   })
 
@@ -126,7 +126,7 @@ describe("Query", () => {
     } catch (err) {
       expect(err.name).toBe('StyraRunError')
       expect(err.message).toBe('Query failed: Invalid JSON')
-      expect(err.cause?.message).toBe('Invalid JSON')
+      expect(err.cause.message).toBe('Invalid JSON')
     }
   })
 })
@@ -281,11 +281,11 @@ describe("Batched Query", () => {
       fail(`Expected error, got: ${result}`)
     } catch (err) {
       expect(err.message).toBe('Batched check failed: Unexpected status code: 400')
-      expect(err.cause?.name).toBe('StyraRunHttpError')
-      expect(err.cause?.message).toBe('Unexpected status code: 400')
-      expect(err.cause?.statusCode).toBe(400)
-      expect(err.cause?.attempts).toBe(1)
-      expect(err.cause?.body).toBe("foo bar")
+      expect(err.cause.name).toBe('StyraRunHttpError')
+      expect(err.cause.message).toBe('Unexpected status code: 400')
+      expect(err.cause.statusCode).toBe(400)
+      expect(err.cause.attempts).toBe(1)
+      expect(err.cause.body).toBe("foo bar")
     }
   })
 
@@ -400,13 +400,13 @@ describe("Check", () => {
     } catch (err) {
       expect(err.name).toBe('StyraRunError')
       expect(err.message).toBe('Check failed: Query failed: Unexpected status code: 500')
-      expect(err.cause?.name).toBe('StyraRunError')
-      expect(err.cause?.message).toBe('Query failed: Unexpected status code: 500')
-      expect(err.cause?.cause?.name).toBe('StyraRunHttpError')
-      expect(err.cause?.cause?.message).toBe('Unexpected status code: 500')
-      expect(err.cause?.cause?.statusCode).toBe(500)
-      expect(err.cause?.cause?.attempts).toBe(1)
-      expect(err.cause?.cause?.body).toBe('some error happened')
+      expect(err.cause.name).toBe('StyraRunError')
+      expect(err.cause.message).toBe('Query failed: Unexpected status code: 500')
+      expect(err.cause.cause.name).toBe('StyraRunHttpError')
+      expect(err.cause.cause.message).toBe('Unexpected status code: 500')
+      expect(err.cause.cause.statusCode).toBe(500)
+      expect(err.cause.cause.attempts).toBe(1)
+      expect(err.cause.cause.body).toBe('some error happened')
     }
   })
 })
@@ -511,15 +511,15 @@ describe("Assert", () => {
     } catch (err) {
       expect(err.name).toBe('StyraRunError')
       expect(err.message).toBe('Assert failed: Check failed: Query failed: Unexpected status code: 500')
-      expect(err.cause?.name).toBe('StyraRunError')
-      expect(err.cause?.message).toBe('Check failed: Query failed: Unexpected status code: 500')
-      expect(err.cause?.cause?.name).toBe('StyraRunError')
-      expect(err.cause?.cause?.message).toBe('Query failed: Unexpected status code: 500')
-      expect(err.cause?.cause?.cause?.name).toBe('StyraRunHttpError')
-      expect(err.cause?.cause?.cause?.message).toBe('Unexpected status code: 500')
-      expect(err.cause?.cause?.cause?.statusCode).toBe(500)
-      expect(err.cause?.cause?.cause?.attempts).toBe(1)
-      expect(err.cause?.cause?.cause?.body).toBe('some error happened')
+      expect(err.cause.name).toBe('StyraRunError')
+      expect(err.cause.message).toBe('Check failed: Query failed: Unexpected status code: 500')
+      expect(err.cause.cause.name).toBe('StyraRunError')
+      expect(err.cause.cause.message).toBe('Query failed: Unexpected status code: 500')
+      expect(err.cause.cause.cause.name).toBe('StyraRunHttpError')
+      expect(err.cause.cause.cause.message).toBe('Unexpected status code: 500')
+      expect(err.cause.cause.cause.statusCode).toBe(500)
+      expect(err.cause.cause.cause.attempts).toBe(1)
+      expect(err.cause.cause.cause.body).toBe('some error happened')
     }
   })
 })
@@ -655,10 +655,10 @@ describe("Filter allowed", () => {
     } catch (err) {
       expect(err.name).toBe('StyraRunError')
       expect(err.message).toBe('Filtering failed: No \'path\' provided for list entry at 3')
-      expect(err.cause?.name).toBe('StyraRunError')
-      expect(err.cause?.message).toBe("No 'path' provided for list entry at 3")
-      expect(err.cause?.path).toBeUndefined()
-      expect(err.cause?.query).toBeUndefined()
+      expect(err.cause.name).toBe('StyraRunError')
+      expect(err.cause.message).toBe("No 'path' provided for list entry at 3")
+      expect(err.cause.path).toBeUndefined()
+      expect(err.cause.query).toBeUndefined()
     }
   })
 })

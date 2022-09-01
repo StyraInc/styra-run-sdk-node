@@ -304,7 +304,7 @@ export class StyraRunClient {
     }
 
     if (decisionList === undefined || decisionList.length !== list.length) {
-      const err = new StyraRunError(`Returned decision list size (${decisionList?.length || 0}) not equal to provided list size (${list.length})`)
+      const err = new StyraRunError(`Returned decision list size (${decisionList ? decisionList.length : 0}) not equal to provided list size (${list.length})`)
       this.signalEvent(EventType.FILTER, {list, decisionList, path, err})
       throw err
     }
@@ -450,7 +450,7 @@ export class StyraRunClient {
 }
 
 export function defaultPredicate(decision) {
-  return decision?.result === true
+  return decision && decision.result === true
 }
 
 async function defaultRbacUsersCallback(_, __) {
