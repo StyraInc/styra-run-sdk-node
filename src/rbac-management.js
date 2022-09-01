@@ -235,17 +235,17 @@ export class Paginators {
         throw new InvalidInputError("'page' is not a valid number")
       }
 
-      let of = undefined
+      let totalPages = undefined
       if (pageSize === 0) {
-        of = 1
+        totalPages = 1
       } else if (getTotalCount) {
         const totalCount = await getTotalCount(request)
-        of = Math.ceil(totalCount / pageSize)
+        totalPages = Math.ceil(totalCount / pageSize)
       }
 
       const offset = Math.max(index - 1, 0) * pageSize
       const result = await producer(offset, pageSize, request)
-      return {result, page: {index, of}}
+      return {result, page: {index, of: totalPages}}
     }
   }
 }
