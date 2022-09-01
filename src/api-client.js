@@ -1,6 +1,6 @@
 import Url from "url"
 import { AwsClient } from "./aws.js"
-import { StyraRunError } from "./errors.js"
+import { StyraRunError, TimeoutError } from "./errors.js"
 import { httpRequest, urlToRequestOptions } from "./helpers.js"
 import { API_CLIENT_MAX_RETRIES, AWS_IMDSV2_URL } from "./constants.js"
 
@@ -43,8 +43,8 @@ export class ApiClient {
     this.eventListeners = eventListeners
   }
 
-  async signalEvent(type, info) {
-    this.eventListeners.forEach(async (listener) => listener(type, info))
+  signalEvent(type, info) {
+    this.eventListeners.forEach((listener) => listener(type, info))
   }
 
   async get(path) {
@@ -226,13 +226,6 @@ export class ApiClient {
     } else {
       return await organizeGatewaysPromise
     }
-  }
-}
-
-class TimeoutError extends Error {
-  constructor(timeout) {
-    super(`Operation took longer than ${timeout}ms`)
-    this.timeout = timeout
   }
 }
 
