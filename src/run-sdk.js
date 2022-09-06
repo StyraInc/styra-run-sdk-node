@@ -1,11 +1,11 @@
 import Path from "path"
-import { ApiClient} from "./api-client.js"
-import { StyraRunError, StyraRunAssertionError, StyraRunHttpError } from "./errors.js"
-import { getBody, toJson, fromJson } from "./helpers.js"
-import { RbacManager } from "./rbac-management.js"
-import { BATCH_MAX_ITEMS } from "./constants.js"
+import {ApiClient} from "./api-client.js"
+import {StyraRunError, StyraRunAssertionError, StyraRunHttpError} from "./errors.js"
+import {getBody, toJson, fromJson} from "./helpers.js"
+import {RbacManager} from "./rbac-management.js"
+import {BATCH_MAX_ITEMS} from "./constants.js"
 import Proxy from "./proxy.js"
-import { Paginators } from "./rbac-management.js"
+import {Paginators} from "./rbac-management.js"
 
 // TODO: Add support for versioning/ETags for data API requests
 // TODO: Add support for fail-over/retry when server connection is broken
@@ -19,7 +19,10 @@ const EventType = {
   BATCH_QUERY: 'batch-query',
   CHECK: 'check',
   FILTER: 'filter',
-  QUERY: 'query'
+  QUERY: 'query',
+  GET_DATA: 'get-data',
+  PUT_DATA: 'put-data',
+  DELETE_DATA: 'delete-data'
 }
 
 /**
@@ -27,6 +30,7 @@ const EventType = {
  * @param {string} type the type of event signaled
  * @param {Object} info context-dependent info about the event
  */
+
 /**
  * @typedef {Object} SdkOptions
  * @property {number} batchMaxItems the maximum number of query items to send in a batch request. If the number of items exceed this number, they will be split over multiple batch requests. (default: 20)
@@ -39,10 +43,10 @@ const EventType = {
  */
 export class StyraRunClient {
   constructor(url, token, {
-                batchMaxItems = BATCH_MAX_ITEMS,
-                connectionOptions,
-                eventListeners = []
-              }) {
+    batchMaxItems = BATCH_MAX_ITEMS,
+    connectionOptions,
+    eventListeners = []
+  }) {
     this.batchMaxItems = batchMaxItems
     this.apiClient = new ApiClient(url, token, {...connectionOptions, eventListeners})
     this.eventListeners = eventListeners // currently no README example on this usage?
@@ -58,7 +62,7 @@ export class StyraRunClient {
 
   /**
    * Makes an authorization query against a policy rule specified by `path`.
-   * Where `path` is the trailing segment of the full request path 
+   * Where `path` is the trailing segment of the full request path
    * `"/v1/projects/<USER_ID>/<PROJECT_ID>/envs/<ENVIRONMENT_ID>/data/<PATH>"`
    *
    * Returns a `Promise` that on a successful Styra Run API response resolves to the response body dictionary, e.g.: `{"result": ...}`.
@@ -163,7 +167,7 @@ export class StyraRunClient {
       this.signalEvent(EventType.ASSERT, {asserted: false, path, input, err})
       throw new StyraRunError('Assert failed', err)
     }
-    
+
     throw new StyraRunAssertionError()
   }
 
@@ -222,7 +226,7 @@ export class StyraRunClient {
    * @param {*} input the input document to apply to the entire batch request, or `undefined`
    * @returns {Promise<BatchCheckResult, StyraRunError>} a list of result objects
    */
-   async batchQuery(items, input = undefined) {
+  async batchQuery(items, input = undefined) {
     // Split the items over multiple batch requests, if necessary;
     // to cope with server-side enforced size limit of batch request.
     const remainingItems = [...items]
@@ -258,7 +262,7 @@ export class StyraRunClient {
 
   /**
    * For each entry in the provided `list`, an authorization check against a policy rule specified by `path` is made.
-   * Where `path` is the trailing segment of the full request path 
+   * Where `path` is the trailing segment of the full request path
    * `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`
    *
    * Returns a `Promise` that resolves to a filtered version of the provided `list`.
@@ -311,7 +315,7 @@ export class StyraRunClient {
 
     try {
       const filteredList = []
-      list.forEach(async (v, i) => { 
+      list.forEach(async (v, i) => {
         if (await predicate(decisionList[i])) {
           filteredList.push(v)
         }
@@ -329,7 +333,7 @@ export class StyraRunClient {
    */
   /**
    * Fetch data from the `Styra Run` data API.
-   * Where `path` is the trailing segment of the full request path 
+   * Where `path` is the trailing segment of the full request path
    * `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`
    *
    * Returns a `Promise` that on a successful response resolves to the {@link DataResult response body dictionary}: `{"result": ...}`.
@@ -341,10 +345,12 @@ export class StyraRunClient {
    */
   async getData(path, def = undefined) {
     try {
-      const response = await this.apiClient.get(Path.join('data', path))
-      return fromJson(response)
+      const response = fromJson(await this.apiClient.get(Path.join('data', path)))
+      this.signalEvent(EventType.GET_DATA, {path, response})
+      return response
     } catch (err) {
-      if (err instanceof StyraRunHttpError && err.isNotFoundStatus()) {
+      this.signalEvent(EventType.GET_DATA, {path, err})
+      if (def && err instanceof StyraRunHttpError && err.isNotFoundStatus()) {
         return {result: def}
       }
       throw new StyraRunError('GET data request failed', err)
@@ -358,7 +364,7 @@ export class StyraRunClient {
    */
   /**
    * Upload data to the `Styra Run` data API.
-   * Where `path` is the trailing segment of the full request path 
+   * Where `path` is the trailing segment of the full request path
    * `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`.
    *
    * Returns a `Promise` that on a successful response resolves to the Styra Run API {@link DataUpdateResult response body dictionary}: `{"version": ...}`.
@@ -371,16 +377,18 @@ export class StyraRunClient {
   async putData(path, data) {
     try {
       const json = toJson(data)
-      const response = await this.apiClient.put(Path.join('data', path), json)
-      return fromJson(response)
+      const response = fromJson(await this.apiClient.put(Path.join('data', path), json))
+      this.signalEvent(EventType.PUT_DATA, {path, data, response})
+      return response
     } catch (err) {
+      this.signalEvent(EventType.PUT_DATA, {path, data, err})
       throw new StyraRunError('PUT data request failed', err)
     }
   }
 
   /**
    * Remove data from the `Styra Run` data API.
-   * Where `path` is the trailing segment of the full request path 
+   * Where `path` is the trailing segment of the full request path
    * `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`
    *
    * Returns a `Promise` that on a successful response resolves to the Styra Run API {@link DataUpdateResult response body dictionary}: `{"version": ...}`.
@@ -391,9 +399,11 @@ export class StyraRunClient {
    */
   async deleteData(path) {
     try {
-      const response = await this.apiClient.delete(Path.join('data', path))
-      return fromJson(response)
+      const response = fromJson(await this.apiClient.delete(Path.join('data', path)))
+      this.signalEvent(EventType.DELETE_DATA, {path, response})
+      return response
     } catch (err) {
+      this.signalEvent(EventType.DELETE_DATA, {path, err})
       throw new StyraRunError('DELETE data request failed', err)
     }
   }
@@ -431,18 +441,26 @@ export class StyraRunClient {
   /**
    * Returns an HTTP API function.
    *
-   * @param {CreateRbacInputDocumentCallback} createInputDocument
+   * @param {CreateRbacAuthzInputCallback} createAuthzInput
    * @param {GetRbacUsersCallback} getUsers
-   * @param {OnSetRbacBindingCallback} onSetBinding
-   * @param {number} pageSize `integer` representing the size of each page of enumerated user bindings
+   * @param {OnGetRbacRoleBindingCallback} onGetRoleBinding
+   * @param {OnSetRbacRoleBindingCallback} onSetRoleBinding
+   * @param {OnDeleteRbacRoleBindingCallback} onDeleteRoleBinding
    * @returns {RbacHandler}
    */
   manageRbac({
-               createInputDocument = defaultRbacInputDocumentCallback,
+               createAuthzInput = defaultRbacAuthzInputCallback,
                getUsers = defaultRbacUsersCallback,
-               onSetBinding = defaultRbacOnSetBindingCallback
+               onGetRoleBinding = defaultRbacOnGetRoleBindingCallback,
+               onSetRoleBinding = defaultRbacOnSetRoleBindingCallback,
+               onDeleteRoleBinding = defaultRbacOnDeleteRoleBindingCallback,
              }) {
-    const manager = new RbacManager(this, createInputDocument, getUsers, onSetBinding)
+    const manager = new RbacManager(this, getUsers, {
+      createAuthzInput,
+      onGetRoleBinding,
+      onSetRoleBinding,
+      onDeleteRoleBinding
+    })
     return async (request, response) => {
       await manager.handle(request, response)
     }
@@ -457,11 +475,19 @@ async function defaultRbacUsersCallback(_, __) {
   return []
 }
 
-async function defaultRbacOnSetBindingCallback(_, __, ___) {
+async function defaultRbacOnGetRoleBindingCallback(_, __) {
   return true
 }
 
-async function defaultRbacInputDocumentCallback(_) {
+async function defaultRbacOnSetRoleBindingCallback(_, __, ___) {
+  return true
+}
+
+async function defaultRbacOnDeleteRoleBindingCallback(_, __) {
+  return true
+}
+
+async function defaultRbacAuthzInputCallback(_) {
   return {}
 }
 

@@ -3,7 +3,7 @@ import serverSpy from "jasmine-http-server-spy"
 import Url from "url"
 import {Paginators} from "../src/rbac-management.js";
 import StyraRun from "../src/run-sdk.js"
-import { clientRequest, withServer } from "./helpers.js"
+import {clientRequest, withServer} from "./helpers.js"
 
 describe("Roles can be fetched", () => {
   let httpSpy
@@ -13,7 +13,7 @@ describe("Roles can be fetched", () => {
   const sdkClient = StyraRun('http://placeholder', 'foobar')
   sdkClient.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
-  beforeAll(function(done) {
+  beforeAll(async () => {
     httpSpy = serverSpy.createSpyObj('mockServer', [
       {
         method: 'post',
@@ -27,14 +27,14 @@ describe("Roles can be fetched", () => {
       }
     ])
 
-    httpSpy.server.start(8082, done)
-  })
-  
-  afterAll(function(done) {
-    httpSpy.server.stop(done)
+    await httpSpy.server.start(8082)
   })
 
-  afterEach(function() {
+  afterAll(async () => {
+    await httpSpy.server.stop()
+  })
+
+  afterEach(function () {
     httpSpy.checkAuthzUrl.calls.reset();
     httpSpy.getRolesUrl.calls.reset();
   })
@@ -49,24 +49,24 @@ describe("Roles can be fetched", () => {
           result: true
         }
       })
-  
+
       httpSpy.getRolesUrl.and.returnValue({
         statusCode: 200,
         body: {
           result: roles
         }
       })
-  
+
       const server = http.createServer()
       server.addListener('request', sdkClient.manageRbac({
-        createInputDocument: () => {
+        createAuthzInput: () => {
           return authzInput
         }
       }))
-  
+
       await withServer(server, 8081, async () => {
         const {response, body} = await clientRequest(8081, 'GET', '/roles')
-  
+
         expect(response.statusCode).toBe(200)
         expect(JSON.parse(body)).toEqual({result: roles})
         expect(httpSpy.checkAuthzUrl).toHaveBeenCalledWith(jasmine.objectContaining({
@@ -88,7 +88,7 @@ describe("Roles can be fetched", () => {
       statusCode: 200,
       body: {}
     })
-  
+
     httpSpy.getRolesUrl.and.returnValue({
       statusCode: 200,
       body: {
@@ -98,7 +98,7 @@ describe("Roles can be fetched", () => {
 
     const server = http.createServer()
     server.addListener('request', sdkClient.manageRbac({
-      createInputDocument: () => {
+      createAuthzInput: () => {
         return authzInput
       }
     }))
@@ -124,7 +124,7 @@ describe("Bindings can be fetched", () => {
   const sdkClient = StyraRun('http://placeholder', 'foobar')
   sdkClient.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
-  beforeAll(function(done) {
+  beforeAll(async () => {
     httpSpy = serverSpy.createSpyObj('mockServer', [
       {
         method: 'post',
@@ -148,14 +148,14 @@ describe("Bindings can be fetched", () => {
       }
     ])
 
-    httpSpy.server.start(8082, done)
-  })
-  
-  afterAll(function(done) {
-    httpSpy.server.stop(done)
+    await httpSpy.server.start(8082)
   })
 
-  afterEach(function() {
+  afterAll(async () => {
+    await httpSpy.server.stop()
+  })
+
+  afterEach(function () {
     httpSpy.checkAuthzUrl.calls.reset();
     httpSpy.getAliceBindingUrl.calls.reset();
     httpSpy.getBobBindingUrl.calls.reset();
@@ -182,7 +182,7 @@ describe("Bindings can be fetched", () => {
           result: true
         }
       })
-      
+
       if (bindings.hasOwnProperty('alice')) {
         httpSpy.getAliceBindingUrl.and.returnValue({
           statusCode: 200,
@@ -210,7 +210,7 @@ describe("Bindings can be fetched", () => {
           body: notFoundResponseBody
         })
       }
-      
+
       if (bindings.hasOwnProperty('charles')) {
         httpSpy.getCharlesBindingUrl.and.returnValue({
           statusCode: 200,
@@ -231,20 +231,23 @@ describe("Bindings can be fetched", () => {
         }
         return users.slice(offset, offset + limit)
       }
-  
+
       const server = http.createServer()
       server.addListener('request', sdkClient.manageRbac(
         {
-          createInputDocument: () => {
+          createAuthzInput: () => {
             return authzInput
           },
           getUsers: Paginators.makeIndexedPaginator((page !== undefined ? 2 : 0), userProducer),
           onSetBinding: () => true
         }))
-  
+
       await withServer(server, 8081, async () => {
-        const {response, body} = await clientRequest(8081, 'GET', '/user_bindings' + (page !== undefined ? `?page=${page}` : ''))
-  
+        const {
+          response,
+          body
+        } = await clientRequest(8081, 'GET', '/user_bindings' + (page !== undefined ? `?page=${page}` : ''))
+
         expect(response.statusCode).toBe(200)
         expect(JSON.parse(body).result).toEqual(expectedBindings)
         expect(httpSpy.checkAuthzUrl).toHaveBeenCalledWith(jasmine.objectContaining({
@@ -321,7 +324,7 @@ describe("Bindings can be fetched", () => {
       statusCode: 200,
       body: {}
     })
-  
+
     httpSpy.getAliceBindingUrl.and.returnValue({
       statusCode: 200,
       body: {
@@ -331,13 +334,178 @@ describe("Bindings can be fetched", () => {
 
     const server = http.createServer()
     server.addListener('request', sdkClient.manageRbac({
-      createInputDocument: () => {
+      createAuthzInput: () => {
         return authzInput
       }
     }))
 
     await withServer(server, 8081, async () => {
       const {response, body} = await clientRequest(8081, 'GET', '/user_bindings')
+
+      expect(response.statusCode).toBe(403)
+      expect(body).toEqual('Forbidden')
+      expect(httpSpy.checkAuthzUrl).toHaveBeenCalledWith(jasmine.objectContaining({
+        body: {input: authzInput}
+      }))
+      expect(httpSpy.getAliceBindingUrl).toHaveBeenCalledTimes(0)
+    })
+  })
+})
+
+describe("Individual bindings can be fetched", () => {
+  let httpSpy
+
+  const port = 8083
+  const basePath = 'v1/projects/user1/proj1/envs/env1'
+  const sdkClient = StyraRun('http://placeholder', 'foobar')
+  sdkClient.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
+
+  beforeAll(async () => {
+    httpSpy = serverSpy.createSpyObj('mockServer', [
+      {
+        method: 'post',
+        url: `/${basePath}/data/rbac/manage/allow`,
+        handlerName: 'checkAuthzUrl'
+      },
+      {
+        method: 'get',
+        url: `/${basePath}/data/rbac/user_bindings/acmecorp/alice`,
+        handlerName: 'getAliceBindingUrl'
+      },
+      {
+        method: 'get',
+        url: `/${basePath}/data/rbac/user_bindings/acmecorp/bob`,
+        handlerName: 'getBobBindingUrl'
+      },
+      {
+        method: 'get',
+        url: `/${basePath}/data/rbac/user_bindings/acmecorp/charles`,
+        handlerName: 'getCharlesBindingUrl'
+      }
+    ])
+
+    await httpSpy.server.start(port)
+  })
+
+  afterAll(async () => {
+    await httpSpy.server.stop()
+  })
+
+  afterEach(function () {
+    httpSpy.checkAuthzUrl.calls.reset();
+    httpSpy.getAliceBindingUrl.calls.reset();
+    httpSpy.getBobBindingUrl.calls.reset();
+    httpSpy.getCharlesBindingUrl.calls.reset();
+  })
+
+  it("ok", async () => {
+    const expectedRoleBinding = ['foo', 'bar']
+    const authzInput = {tenant: 'acmecorp', subject: 'alice'}
+
+    httpSpy.checkAuthzUrl.and.returnValue({
+      statusCode: 200,
+      body: {
+        result: true
+      }
+    })
+
+    httpSpy.getAliceBindingUrl.and.returnValue({
+      statusCode: 200,
+      body: {
+        result: ['foo', 'bar']
+      }
+    })
+
+    const server = http.createServer()
+    server.addListener('request', sdkClient.manageRbac(
+      {
+        createAuthzInput: () => {
+          return authzInput
+        }
+      }))
+
+    await withServer(server, 8081, async () => {
+      const {response, body} = await clientRequest(8081, 'GET', '/user_bindings/alice')
+
+      expect(response.statusCode).toBe(200)
+      expect(JSON.parse(body)).toEqual({result: expectedRoleBinding})
+      expect(httpSpy.checkAuthzUrl).toHaveBeenCalledWith(jasmine.objectContaining({
+        body: {input: authzInput}
+      }))
+
+      expect(httpSpy.getAliceBindingUrl).toHaveBeenCalledTimes(1)
+      expect(httpSpy.getBobBindingUrl).toHaveBeenCalledTimes(0)
+      expect(httpSpy.getCharlesBindingUrl).toHaveBeenCalledTimes(0)
+    })
+  })
+
+  const assertErrorResponse = (statusCode) => {
+    return async () => {
+      const authzInput = {tenant: 'acmecorp', subject: 'alice'}
+
+      httpSpy.checkAuthzUrl.and.returnValue({
+        statusCode: 200,
+        body: {
+          result: true
+        }
+      })
+
+      httpSpy.getBobBindingUrl.and.returnValue({
+        statusCode: statusCode,
+        body: {
+          result: ['alsiuefhaislu']
+        }
+      })
+
+      const server = http.createServer()
+      server.addListener('request', sdkClient.manageRbac(
+        {
+          createAuthzInput: () => {
+            return authzInput
+          }
+        }))
+
+      await withServer(server, 8081, async () => {
+        const {response, body} = await clientRequest(8081, 'GET', '/user_bindings/bob')
+
+        expect(response.statusCode).toBe(500)
+        expect(httpSpy.checkAuthzUrl).toHaveBeenCalledWith(jasmine.objectContaining({
+          body: {input: authzInput}
+        }))
+
+        expect(httpSpy.getAliceBindingUrl).toHaveBeenCalledTimes(0)
+        expect(httpSpy.getBobBindingUrl).toHaveBeenCalledTimes(1)
+        expect(httpSpy.getCharlesBindingUrl).toHaveBeenCalledTimes(0)
+      })
+    }
+  }
+
+  // it("not found", assertErrorResponse(400))
+  it("not found", assertErrorResponse(404))
+  // it("not found", assertErrorResponse(500))
+
+  it("unauthorized", async () => {
+    const authzInput = {tenant: 'acmecorp', subject: 'alice'}
+
+    httpSpy.checkAuthzUrl.and.returnValue({
+      statusCode: 200,
+      body: {}
+    })
+
+    httpSpy.getAliceBindingUrl.and.returnValue({
+      statusCode: 200
+    })
+
+    const server = http.createServer()
+    server.addListener('request', sdkClient.manageRbac({
+      createAuthzInput: () => {
+        return authzInput
+      }
+    }))
+
+    await withServer(server, 8081, async () => {
+      const {response, body} = await clientRequest(8081, 'GET', '/user_bindings/alice',
+        JSON.stringify(['foo']))
 
       expect(response.statusCode).toBe(403)
       expect(body).toEqual('Forbidden')
@@ -357,7 +525,7 @@ describe("Bindings can be upserted", () => {
   const sdkClient = StyraRun('http://placeholder', 'foobar')
   sdkClient.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
-  beforeAll(function(done) {
+  beforeAll(async () => {
     httpSpy = serverSpy.createSpyObj('mockServer', [
       {
         method: 'post',
@@ -381,94 +549,92 @@ describe("Bindings can be upserted", () => {
       }
     ])
 
-    httpSpy.server.start(8082, done)
-  })
-  
-  afterAll(function(done) {
-    httpSpy.server.stop(done)
+    await httpSpy.server.start(8082)
   })
 
-  afterEach(function() {
+  afterAll(async () => {
+    await httpSpy.server.stop()
+  })
+
+  afterEach(function () {
     httpSpy.checkAuthzUrl.calls.reset();
     httpSpy.putAliceBindingUrl.calls.reset();
     httpSpy.putBobBindingUrl.calls.reset();
     httpSpy.putCharlesBindingUrl.calls.reset();
   })
-  
-  it("ok", () => {
-    return async () => {
-      const authzInput = {tenant: 'acmecorp', subject: 'alice'}
-      const roles = ['do', 're', 'mi']
 
-      httpSpy.checkAuthzUrl.and.returnValue({
-        statusCode: 200,
-        body: {
-          result: true
+  it("ok", async () => {
+    const authzInput = {tenant: 'acmecorp', subject: 'alice'}
+    const roles = ['do', 're', 'mi']
+
+    httpSpy.checkAuthzUrl.and.returnValue({
+      statusCode: 200,
+      body: {
+        result: true
+      }
+    })
+
+    httpSpy.putAliceBindingUrl.and.returnValue({
+      statusCode: 200,
+      body: {}
+    })
+
+    const server = http.createServer()
+    server.addListener('request', sdkClient.manageRbac(
+      {
+        createAuthzInput: () => {
+          return authzInput
         }
-      })
+      }))
 
-      httpSpy.putAliceBindingUrl.and.returnValue({
-        statusCode: 200,
-        body: {}
-      })
-  
-      const server = http.createServer()
-      server.addListener('request', sdkClient.manageRbac(
-        {
-          createInputDocument: () => {
-            return authzInput
-          }
-        }))
-  
-      await withServer(server, 8081, async () => {
-        const {response, body} = await clientRequest(8081, 'PUT', '/user_bindings/alice', JSON.stringify(roles))
-  
-        expect(response.statusCode).toBe(200)
-        expect(httpSpy.checkAuthzUrl).toHaveBeenCalledWith(jasmine.objectContaining({
-          body: {input: authzInput}
-        }))
+    await withServer(server, 8081, async () => {
+      const {response, body} = await clientRequest(8081, 'PUT', '/user_bindings/alice', JSON.stringify(roles))
 
-        expect(httpSpy.putAliceBindingUrl).toHaveBeenCalledWith(jasmine.objectContaining({
-          body: roles
-        }))
-        expect(httpSpy.putBobBindingUrl).toHaveBeenCalledTimes(0)
-        expect(httpSpy.putCharlesBindingUrl).toHaveBeenCalledTimes(0)
-      })
-    }
+      expect(response.statusCode).toBe(200)
+      expect(httpSpy.checkAuthzUrl).toHaveBeenCalledWith(jasmine.objectContaining({
+        body: {input: authzInput}
+      }))
+
+      expect(httpSpy.putAliceBindingUrl).toHaveBeenCalledWith(jasmine.objectContaining({
+        body: roles
+      }))
+      expect(httpSpy.putBobBindingUrl).toHaveBeenCalledTimes(0)
+      expect(httpSpy.putCharlesBindingUrl).toHaveBeenCalledTimes(0)
+    })
   })
 
   const assertErrorResponse = (statusCode) => {
     return async () => {
       const authzInput = {tenant: 'acmecorp', subject: 'alice'}
       const roles = ['do', 're', 'mi']
-  
+
       httpSpy.checkAuthzUrl.and.returnValue({
         statusCode: 200,
         body: {
           result: true
         }
       })
-  
+
       httpSpy.putAliceBindingUrl.and.returnValue({
         statusCode: statusCode
       })
-  
+
       const server = http.createServer()
       server.addListener('request', sdkClient.manageRbac(
         {
-          createInputDocument: () => {
+          createAuthzInput: () => {
             return authzInput
           }
         }))
-  
+
       await withServer(server, 8081, async () => {
         const {response} = await clientRequest(8081, 'PUT', '/user_bindings/alice', JSON.stringify(roles))
-  
+
         expect(response.statusCode).toBe(500)
         expect(httpSpy.checkAuthzUrl).toHaveBeenCalledWith(jasmine.objectContaining({
           body: {input: authzInput}
         }))
-  
+
         expect(httpSpy.putAliceBindingUrl).toHaveBeenCalledWith(jasmine.objectContaining({
           body: roles
         }))
@@ -489,7 +655,7 @@ describe("Bindings can be upserted", () => {
       statusCode: 200,
       body: {}
     })
-  
+
     httpSpy.putAliceBindingUrl.and.returnValue({
       statusCode: 200,
       body: {
@@ -499,13 +665,13 @@ describe("Bindings can be upserted", () => {
 
     const server = http.createServer()
     server.addListener('request', sdkClient.manageRbac({
-      createInputDocument: () => {
+      createAuthzInput: () => {
         return authzInput
       }
     }))
 
     await withServer(server, 8081, async () => {
-      const {response, body} = await clientRequest(8081, 'PUT', '/user_bindings/alice', 
+      const {response, body} = await clientRequest(8081, 'PUT', '/user_bindings/alice',
         JSON.stringify(['foo']))
 
       expect(response.statusCode).toBe(403)
@@ -526,7 +692,7 @@ describe("Bindings can be deleted", () => {
   const sdkClient = StyraRun('http://placeholder', 'foobar')
   sdkClient.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
-  beforeAll(function(done) {
+  beforeAll(async () => {
     httpSpy = serverSpy.createSpyObj('mockServer', [
       {
         method: 'post',
@@ -550,57 +716,55 @@ describe("Bindings can be deleted", () => {
       }
     ])
 
-    httpSpy.server.start(8082, done)
+    await httpSpy.server.start(8082)
   })
 
-  afterAll(function(done) {
-    httpSpy.server.stop(done)
+  afterAll(async () => {
+    await httpSpy.server.stop()
   })
 
-  afterEach(function() {
+  afterEach(function () {
     httpSpy.checkAuthzUrl.calls.reset();
     httpSpy.deleteAliceBindingUrl.calls.reset();
     httpSpy.deleteBobBindingUrl.calls.reset();
     httpSpy.deleteCharlesBindingUrl.calls.reset();
   })
 
-  it("ok", () => {
-    return async () => {
-      const authzInput = {tenant: 'acmecorp', subject: 'alice'}
+  it("ok", async () => {
+    const authzInput = {tenant: 'acmecorp', subject: 'alice'}
 
-      httpSpy.checkAuthzUrl.and.returnValue({
-        statusCode: 200,
-        body: {
-          result: true
+    httpSpy.checkAuthzUrl.and.returnValue({
+      statusCode: 200,
+      body: {
+        result: true
+      }
+    })
+
+    httpSpy.deleteAliceBindingUrl.and.returnValue({
+      statusCode: 200,
+      body: {}
+    })
+
+    const server = http.createServer()
+    server.addListener('request', sdkClient.manageRbac(
+      {
+        createAuthzInput: () => {
+          return authzInput
         }
-      })
+      }))
 
-      httpSpy.putAliceBindingUrl.and.returnValue({
-        statusCode: 200,
-        body: {}
-      })
+    await withServer(server, 8081, async () => {
+      const {response} = await clientRequest(8081, 'DELETE', '/user_bindings/alice')
 
-      const server = http.createServer()
-      server.addListener('request', sdkClient.manageRbac(
-        {
-          createInputDocument: () => {
-            return authzInput
-          }
-        }))
+      expect(response.statusCode).toBe(200)
+      expect(httpSpy.checkAuthzUrl).toHaveBeenCalledWith(jasmine.objectContaining({
+        body: {input: authzInput}
+      }))
 
-      await withServer(server, 8081, async () => {
-        const {response, body} = await clientRequest(8081, 'DELETE', '/user_bindings/alice')
-
-        expect(response.statusCode).toBe(200)
-        expect(httpSpy.checkAuthzUrl).toHaveBeenCalledWith(jasmine.objectContaining({
-          body: {input: authzInput}
-        }))
-
-        expect(httpSpy.deleteAliceBindingUrl).toHaveBeenCalledTimes(1)
-        expect(httpSpy.deleteBobBindingUrl).toHaveBeenCalledTimes(0)
-        expect(httpSpy.deleteCharlesBindingUrl).toHaveBeenCalledTimes(0)
-      })
-    }
+      expect(httpSpy.deleteAliceBindingUrl).toHaveBeenCalledTimes(1)
+      expect(httpSpy.deleteBobBindingUrl).toHaveBeenCalledTimes(0)
+      expect(httpSpy.deleteCharlesBindingUrl).toHaveBeenCalledTimes(0)
+    })
   })
 
   const assertErrorResponse = (statusCode) => {
@@ -621,7 +785,7 @@ describe("Bindings can be deleted", () => {
       const server = http.createServer()
       server.addListener('request', sdkClient.manageRbac(
         {
-          createInputDocument: () => {
+          createAuthzInput: () => {
             return authzInput
           }
         }))
@@ -659,7 +823,7 @@ describe("Bindings can be deleted", () => {
 
     const server = http.createServer()
     server.addListener('request', sdkClient.manageRbac({
-      createInputDocument: () => {
+      createAuthzInput: () => {
         return authzInput
       }
     }))
