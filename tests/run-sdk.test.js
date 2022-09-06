@@ -14,7 +14,7 @@ describe("Query", () => {
   const client = StyraRun('http://placeholder', 'foobar')
   client.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
-  beforeAll(function(done) {
+  beforeAll(async () => {
     httpSpy = serverSpy.createSpyObj('mockServer', [
       {
         method: 'post',
@@ -23,11 +23,11 @@ describe("Query", () => {
       }
     ])
 
-    httpSpy.server.start(8082, done)
+    await httpSpy.server.start(8082)
   })
   
-  afterAll(function(done) {
-    httpSpy.server.stop(done)
+  afterAll(async () => {
+    await httpSpy.server.stop()
   })
 
   afterEach(function() {
@@ -139,18 +139,18 @@ describe("Batched Query", () => {
   const client = StyraRun('http://placeholder', 'foobar')
   client.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
-  beforeAll(function(done) {
+  beforeAll(async () => {
     httpSpy = serverSpy.createSpyObj('mockServer', [{
         method: 'post',
         url: `/${basePath}/data_batch`,
         handlerName: 'getMockedUrl'
       }
     ])
-    httpSpy.server.start(8082, done)
+    await httpSpy.server.start(8082)
   })
   
-  afterAll(function(done) {
-    httpSpy.server.stop(done)
+  afterAll(async () => {
+    await httpSpy.server.stop()
   })
 
   afterEach(function() {
@@ -325,18 +325,18 @@ describe("Check", () => {
   const client = StyraRun('http://placeholder', 'foobar')
   client.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
-  beforeAll(function(done) {
+  beforeAll(async () => {
     httpSpy = serverSpy.createSpyObj('mockServer', [{
         method: 'post',
         url: `/${basePath}/data/${path}`,
         handlerName: 'getMockedUrl'
       }
     ])
-    httpSpy.server.start(8082, done)
+    await httpSpy.server.start(8082)
   })
   
-  afterAll(function(done) {
-    httpSpy.server.stop(done)
+  afterAll(async () => {
+    await httpSpy.server.stop()
   })
 
   afterEach(function() {
@@ -420,18 +420,18 @@ describe("Assert", () => {
   const client = StyraRun('http://placeholder', 'foobar')
   client.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
-  beforeAll(function(done) {
+  beforeAll(async () => {
     httpSpy = serverSpy.createSpyObj('mockServer', [{
         method: 'post',
         url: `/${basePath}/data/${path}`,
         handlerName: 'getMockedUrl'
       }
     ])
-    httpSpy.server.start(8082, done)
+    await httpSpy.server.start(8082)
   })
   
-  afterAll(function(done) {
-    httpSpy.server.stop(done)
+  afterAll(async () => {
+    await httpSpy.server.stop()
   })
 
   afterEach(function() {
@@ -538,18 +538,18 @@ describe("Filter allowed", () => {
     return i % 2 == 0 ? {d: v} : undefined 
   }
 
-  beforeAll(function(done) {
+  beforeAll(async () =>  {
     httpSpy = serverSpy.createSpyObj('mockServer', [{
         method: 'post',
         url: `/${basePath}/data_batch`,
         handlerName: 'getMockedUrl'
       }
     ])
-    httpSpy.server.start(8082, done)
+    await httpSpy.server.start(8082)
   })
   
-  afterAll(function(done) {
-    httpSpy.server.stop(done)
+  afterAll(async () => {
+    await httpSpy.server.stop()
   })
 
   afterEach(function() {
@@ -673,18 +673,18 @@ describe("Proxy", () => {
   const sdkClient = StyraRun('http://placeholder', 'foobar')
   sdkClient.apiClient.gateways = [Url.parse(`http://localhost:${port}/${basePath}`)]
 
-  beforeAll(function(done) {
+  beforeAll(async () => {
     httpSpy = serverSpy.createSpyObj('mockServer', [{
         method: 'post',
         url: `/${basePath}/data_batch`,
         handlerName: 'getMockedUrl'
       }
     ])
-    httpSpy.server.start(8082, done)
+    await httpSpy.server.start(8082)
   })
   
-  afterAll(function(done) {
-    httpSpy.server.stop(done)
+  afterAll(async () => {
+    await httpSpy.server.stop()
   })
 
   afterEach(function() {
