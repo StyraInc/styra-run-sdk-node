@@ -152,7 +152,7 @@ export class RbacManager {
       return result || []
     } catch (err) {
       this.styraRunClient.signalEvent(EventType.GET_BINDING, {id, input: authzInput, err})
-      throw new BackendError('Binding fetch failed', err)
+      throw new ApiError('Binding fetch failed', err)
     }
   }
 
@@ -167,7 +167,7 @@ export class RbacManager {
       return {}
     } catch (err) {
       this.styraRunClient.signalEvent(EventType.SET_BINDING, {binding, input: authzInput, err})
-      throw new BackendError('Binding update failed', err)
+      throw new ApiError('Binding update failed', err)
     }
   }
 
@@ -182,7 +182,7 @@ export class RbacManager {
       return {}
     } catch (err) {
       this.styraRunClient.signalEvent(EventType.DELETE_BINDING, {id, input: authzInput, err})
-      throw new BackendError('Binding update failed', err)
+      throw new ApiError('Binding update failed', err)
     }
   }
 
@@ -328,7 +328,7 @@ class InvalidInputError extends Error {
   }
 }
 
-class BackendError extends Error {
+class ApiError extends Error {
   constructor(message, cause) {
     super(message, cause)
   }
