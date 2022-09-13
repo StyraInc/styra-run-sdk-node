@@ -57,7 +57,7 @@ describe("Roles can be fetched", () => {
       })
 
       const server = http.createServer()
-      server.addListener('request', sdkClient.manageRbac({
+      server.addListener('request', sdkClient.rbacProxy({
         createAuthzInput: () => {
           return authzInput
         }
@@ -96,7 +96,7 @@ describe("Roles can be fetched", () => {
     })
 
     const server = http.createServer()
-    server.addListener('request', sdkClient.manageRbac({
+    server.addListener('request', sdkClient.rbacProxy({
       createAuthzInput: () => {
         return authzInput
       }
@@ -232,12 +232,12 @@ describe("Bindings can be fetched", () => {
       }
 
       const server = http.createServer()
-      server.addListener('request', sdkClient.manageRbac(
+      server.addListener('request', sdkClient.rbacProxy(
         {
           createAuthzInput: () => {
             return authzInput
           },
-          getUsers: Paginators.makeIndexedPaginator((page !== undefined ? 2 : 0), userProducer)
+          listUsers: Paginators.makeIndexedPaginator((page !== undefined ? 2 : 0), userProducer)
         }))
 
       await withServer(server, 8081, async () => {
@@ -331,7 +331,7 @@ describe("Bindings can be fetched", () => {
     })
 
     const server = http.createServer()
-    server.addListener('request', sdkClient.manageRbac({
+    server.addListener('request', sdkClient.rbacProxy({
       createAuthzInput: () => {
         return authzInput
       }
@@ -415,7 +415,7 @@ describe("Individual bindings can be fetched", () => {
     })
 
     const server = http.createServer()
-    server.addListener('request', sdkClient.manageRbac(
+    server.addListener('request', sdkClient.rbacProxy(
       {
         createAuthzInput: () => {
           return authzInput
@@ -456,7 +456,7 @@ describe("Individual bindings can be fetched", () => {
       })
 
       const server = http.createServer()
-      server.addListener('request', sdkClient.manageRbac(
+      server.addListener('request', sdkClient.rbacProxy(
         {
           createAuthzInput: () => {
             return authzInput
@@ -495,7 +495,7 @@ describe("Individual bindings can be fetched", () => {
     })
 
     const server = http.createServer()
-    server.addListener('request', sdkClient.manageRbac({
+    server.addListener('request', sdkClient.rbacProxy({
       createAuthzInput: () => {
         return authzInput
       }
@@ -578,7 +578,7 @@ describe("Bindings can be upserted", () => {
     })
 
     const server = http.createServer()
-    server.addListener('request', sdkClient.manageRbac(
+    server.addListener('request', sdkClient.rbacProxy(
       {
         createAuthzInput: () => {
           return authzInput
@@ -618,7 +618,7 @@ describe("Bindings can be upserted", () => {
       })
 
       const server = http.createServer()
-      server.addListener('request', sdkClient.manageRbac(
+      server.addListener('request', sdkClient.rbacProxy(
         {
           createAuthzInput: () => {
             return authzInput
@@ -662,7 +662,7 @@ describe("Bindings can be upserted", () => {
     })
 
     const server = http.createServer()
-    server.addListener('request', sdkClient.manageRbac({
+    server.addListener('request', sdkClient.rbacProxy({
       createAuthzInput: () => {
         return authzInput
       }
@@ -744,7 +744,7 @@ describe("Bindings can be deleted", () => {
     })
 
     const server = http.createServer()
-    server.addListener('request', sdkClient.manageRbac(
+    server.addListener('request', sdkClient.rbacProxy(
       {
         createAuthzInput: () => {
           return authzInput
@@ -781,7 +781,7 @@ describe("Bindings can be deleted", () => {
       })
 
       const server = http.createServer()
-      server.addListener('request', sdkClient.manageRbac(
+      server.addListener('request', sdkClient.rbacProxy(
         {
           createAuthzInput: () => {
             return authzInput
@@ -820,7 +820,7 @@ describe("Bindings can be deleted", () => {
     })
 
     const server = http.createServer()
-    server.addListener('request', sdkClient.manageRbac({
+    server.addListener('request', sdkClient.rbacProxy({
       createAuthzInput: () => {
         return authzInput
       }

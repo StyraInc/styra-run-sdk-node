@@ -51,7 +51,7 @@ const TEXT_CONTENT_TYPE = {'Content-Type': 'text/plain'}
  *
  * If `limit` is set to `0`, no upper limit should be applied to the number of user identifiers to return.
  *
- * @callback GetRbacUsersCallback
+ * @callback ListRbacUsersCallback
  * @param {string} page
  * @param {IncomingMessage} request the incoming HTTP request
  * @returns {Promise<PageResult>} an object where the `result` property is a list if string user identifiers
@@ -62,7 +62,7 @@ const TEXT_CONTENT_TYPE = {'Content-Type': 'text/plain'}
  * Must return a boolean, where `true` indicates there exists a user corresponding to `id` and the binding
  * may be returned, and `false` that it must not be returned.
  *
- * @callback OnGetRbacRoleBindingCallback
+ * @callback OnGetRbacUserBindingCallback
  * @param {string} id the user identifier for the binding to be fetched
  * @param {IncomingMessage} request the incoming HTTP request
  * @returns {Promise<boolean>} `true`, if the incoming binding fetch is allowed; `false` otherwise
@@ -75,7 +75,7 @@ const TEXT_CONTENT_TYPE = {'Content-Type': 'text/plain'}
  *
  * When called, implementations may create new users if necessary.
  *
- * @callback OnSetRbacRoleBindingCallback
+ * @callback OnSetRbacUserBindingCallback
  * @param {string} id the user identifier for the incoming binding
  * @param {string[]} roles the roles to be bound to the user
  * @param {IncomingMessage} request the incoming HTTP request
@@ -87,7 +87,7 @@ const TEXT_CONTENT_TYPE = {'Content-Type': 'text/plain'}
  * Must return a boolean, where `true` indicates there exists a user corresponding to `id` and the binding
  * may be deleted, and `false` that it must not be deleted.
  *
- * @callback OnDeleteRbacRoleBindingCallback
+ * @callback OnDeleteRbacUserBindingCallback
  * @param {string} id the user identifier for the binding to be deleted
  * @param {IncomingMessage} request the incoming HTTP request
  * @returns {Promise<boolean>} `true`, if the incoming binding delete is allowed; `false` otherwise
@@ -100,21 +100,33 @@ export class RbacManager {
   /**
    * @param {StyraRunClient} styraRunClient
    * @param {CreateRbacAuthzInputCallback} createAuthzInput
-   * @param {GetRbacUsersCallback} listUsers
-   * @param {OnGetRbacRoleBindingCallback} onGetRoleBinding
-   * @param {OnSetRbacRoleBindingCallback} onSetRoleBinding
-   * @param {OnDeleteRbacRoleBindingCallback} onDeleteRoleBinding
+   * @param {ListRbacUsersCallback} listUsers
+   * @param {OnGetRbacUserBindingCallback} onGetUserBinding
+   * @param {OnSetRbacUserBindingCallback} onSetUserBinding
+   * @param {OnDeleteRbacUserBindingCallback} onDeleteUserBinding
    */
-  constructor(styraRunClient, listUsers,
-              {createAuthzInput, onGetRoleBinding, onSetRoleBinding, onDeleteRoleBinding}) {
+  constructor(styraRunClient,
+              {
+                listUsers,
+                createAuthzInput,
+                onGetRoleBinding: onGetUserBinding,
+                onSetRoleBinding: onSetUserBinding,
+                onDeleteRoleBinding: onDeleteUserBinding
+              } = {}) {
     this.styraRunClient = styraRunClient
-    this.createAuthzInput = createAuthzInput
     this.listUsers = listUsers
-    this.onGetRoleBinding = onGetRoleBinding
-    this.onSetRoleBinding = onSetRoleBinding
-    this.onDeleteRoleBinding = onDeleteRoleBinding
+    this.createAuthzInput = createAuthzInput
+    this.onGetUserBinding = onGetUserBinding
+    this.onSetUserBinding = onSetUserBinding
+    this.onDeleteRoleBinding = onDeleteUserBinding
   }
 
+  /**
+   * Gets the list of available rule identifiers.
+   *
+   * @param {*} authzInput the input document required by the manage RBAC policy rule
+   * @returns {Promise<string[]>} a list of string role identifiers
+   */
   async getRoles(authzInput) {
     await this.styraRunClient.assert(RbacPath.AUTHZ, authzInput)
 
@@ -126,7 +138,19 @@ export class RbacManager {
     return roles
   }
 
-  async listRoleBindings(users, authzInput) {
+  /**
+   * @typedef {Object} UserBinding
+   * @property {string} id the user identifier
+   * @property {string[]} roles the list of role identifiers bound to the user
+   */
+  /**
+   * Gets a list of user bindings.
+   *
+   * @param {string[]} users the list of string identifiers for the users to retrieve bindings for
+   * @param {*} authzInput the input document required by the manage RBAC policy rule
+   * @returns {Promise<UserBinding[]>} the list of user bindings
+   */
+  async listUserBindings(users, authzInput) {
     const tenant = getTenant(authzInput)
     await this.styraRunClient.assert(RbacPath.AUTHZ, authzInput)
 
@@ -141,14 +165,20 @@ export class RbacManager {
     return bindings
   }
 
-  async getRoleBinding(id, authzInput) {
+  /**
+   * Gets the binding for a given user.
+   *
+   * @param {string} id the user identifier
+   * @param {*} authzInput the input document required by the manage RBAC policy rule
+   * @returns {Promise<string[]>}
+   */
+  async getUserBinding(id, authzInput) {
     const tenant = getTenant(authzInput)
     await this.styraRunClient.assert(RbacPath.AUTHZ, authzInput)
 
     try {
       const {result} = await this.styraRunClient.getData(`${RbacPath.BINDINGS_PREFIX}/${tenant}/${id}`)
-      this.styraRunClient.signalEvent(EventType.GET_BINDING, {id, input: authzInput, bindings: result})
-      // Styra Run returns an empty object on success; to not accidentally forward sensitive data to client, we return an empty object here
+      this.styraRunClient.signalEvent(EventType.GET_BINDING, {id, input: authzInput, binding: result})
       return result || []
     } catch (err) {
       this.styraRunClient.signalEvent(EventType.GET_BINDING, {id, input: authzInput, err})
@@ -156,30 +186,41 @@ export class RbacManager {
     }
   }
 
-  async setRoleBinding(binding, authzInput) {
+  /**
+   * Sets the binding for a given user.
+   *
+   * @param {string} id the user identifier
+   * @param {string[]} roles a list of role identifiers
+   * @param {*} authzInput the input document required by the manage RBAC policy rule
+   * @returns {Promise<void>}
+   */
+  async setUserBinding(id, roles, authzInput) {
     const tenant = getTenant(authzInput)
     await this.styraRunClient.assert(RbacPath.AUTHZ, authzInput)
 
     try {
-      await this.styraRunClient.putData(`${RbacPath.BINDINGS_PREFIX}/${tenant}/${binding.id}`, binding.roles ?? [])
-      this.styraRunClient.signalEvent(EventType.SET_BINDING, {binding, input: authzInput})
-      // Styra Run returns an empty object on success; to not accidentally forward sensitive data to client, we return an empty object here
-      return {}
+      await this.styraRunClient.putData(`${RbacPath.BINDINGS_PREFIX}/${tenant}/${id}`, roles ?? [])
+      this.styraRunClient.signalEvent(EventType.SET_BINDING, {id, roles, input: authzInput})
     } catch (err) {
-      this.styraRunClient.signalEvent(EventType.SET_BINDING, {binding, input: authzInput, err})
+      this.styraRunClient.signalEvent(EventType.SET_BINDING, {id, roles, input: authzInput, err})
       throw new BackendError('Binding update failed', err)
     }
   }
 
-  async deleteRoleBinding(id, authzInput) {
+  /**
+   * Deletes the binding of a given user.
+   *
+   * @param {string} id the user identifier
+   * @param {*} authzInput the input document required by the manage RBAC policy rule
+   * @returns {Promise<void>}
+   */
+  async deleteUserBinding(id, authzInput) {
     const tenant = getTenant(authzInput)
     await this.styraRunClient.assert(RbacPath.AUTHZ, authzInput)
 
     try {
       await this.styraRunClient.deleteData(`${RbacPath.BINDINGS_PREFIX}/${tenant}/${id}`)
       this.styraRunClient.signalEvent(EventType.DELETE_BINDING, {id, input: authzInput})
-      // Styra Run returns an empty object on success; to not accidentally forward sensitive data to client, we return an empty object here
-      return {}
     } catch (err) {
       this.styraRunClient.signalEvent(EventType.DELETE_BINDING, {id, input: authzInput, err})
       throw new BackendError('Binding update failed', err)
@@ -208,25 +249,25 @@ export class RbacManager {
         const page = new URLSearchParams(url.query).get('page')
         const usersResult = await this.listUsers(page, request)
         const users = usersResult.result || []
-        const bindings = await this.listRoleBindings(users, input)
+        const bindings = await this.listUserBindings(users, input)
         responseBody = {result: bindings, page: usersResult.page}
       }
       // GET /user_bindings/:id
       else if (request.method === GET && pathEndsWith(url, ['user_bindings', '*'])) {
         const {id} = parsePathParameters(url, ['user_bindings', ':id'])
-        if (this.onGetRoleBinding && await this.onGetRoleBinding(id, request) !== true) {
+        if (this.onGetUserBinding && await this.onGetUserBinding(id, request) !== true) {
           throw new InvalidInputError(`Get role binding rejected`)
         }
-        const result = await this.getRoleBinding(id, input)
+        const result = await this.getUserBinding(id, input)
         responseBody = {result}
       }
       // PUT /user_bindings/:id
       else if (request.method === PUT && pathEndsWith(url, ['user_bindings', '*'])) {
         const {id} = parsePathParameters(url, ['user_bindings', ':id'])
         const body = await getBody(request)
-        const binding = await sanitizeBinding(id, fromJson(body), request, this.onSetRoleBinding)
-        const result = await this.setRoleBinding(binding, input)
-        responseBody = {result}
+        const roles = await sanitizeBinding(id, fromJson(body), request, this.onSetUserBinding)
+        await this.setUserBinding(id, roles, input)
+        responseBody = {}
       }
       // DELETE /user_bindings/:id
       else if (request.method === DELETE && pathEndsWith(url, ['user_bindings', '*'])) {
@@ -234,8 +275,8 @@ export class RbacManager {
         if (this.onDeleteRoleBinding && await this.onDeleteRoleBinding(id, request) !== true) {
           throw new InvalidInputError(`Delete role binding rejected`)
         }
-        const result = await this.deleteRoleBinding(id, input)
-        responseBody = {result}
+        await this.deleteUserBinding(id, input)
+        responseBody = {}
       } else {
         response.writeHead(404, TEXT_CONTENT_TYPE)
         response.end('Not Found')
@@ -345,7 +386,7 @@ async function sanitizeBinding(id, data, request, onSetRoleBinding) {
     throw new InvalidInputError(`Set role binding rejected`)
   }
 
-  return {id, roles}
+  return roles
 }
 
 function getTenant(authzInput) {

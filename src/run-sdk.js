@@ -439,6 +439,10 @@ export class StyraRunClient {
     }
   }
 
+  rbacManager() {
+    return new RbacManager(this);
+  }
+
   /**
    * A request handler providing an RBAC management endpoint.
    *
@@ -451,20 +455,21 @@ export class StyraRunClient {
    * Returns an HTTP API function.
    *
    * @param {CreateRbacAuthzInputCallback} createAuthzInput
-   * @param {GetRbacUsersCallback} getUsers
-   * @param {OnGetRbacRoleBindingCallback} onGetRoleBinding
-   * @param {OnSetRbacRoleBindingCallback} onSetRoleBinding
-   * @param {OnDeleteRbacRoleBindingCallback} onDeleteRoleBinding
+   * @param {ListRbacUsersCallback} listUsers
+   * @param {OnGetRbacUserBindingCallback} onGetRoleBinding
+   * @param {OnSetRbacUserBindingCallback} onSetRoleBinding
+   * @param {OnDeleteRbacUserBindingCallback} onDeleteRoleBinding
    * @returns {RbacHandler}
    */
-  manageRbac({
+  rbacProxy({
+               listUsers = defaultRbacUsersCallback,
                createAuthzInput = defaultRbacAuthzInputCallback,
-               getUsers = defaultRbacUsersCallback,
                onGetRoleBinding = defaultRbacOnGetRoleBindingCallback,
                onSetRoleBinding = defaultRbacOnSetRoleBindingCallback,
                onDeleteRoleBinding = defaultRbacOnDeleteRoleBindingCallback,
              }) {
-    const manager = new RbacManager(this, getUsers, {
+    const manager = new RbacManager(this, {
+      listUsers,
       createAuthzInput,
       onGetRoleBinding,
       onSetRoleBinding,
@@ -519,4 +524,8 @@ export default function New(url, token, options = {}) {
 
 export {
   Paginators
+}
+
+export {
+  RbacManager
 }
