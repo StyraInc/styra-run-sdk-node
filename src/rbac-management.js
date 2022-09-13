@@ -43,7 +43,7 @@ const TEXT_CONTENT_TYPE = {'Content-Type': 'text/plain'}
 /**
  * @typedef {Object} PageResult
  * @property {*[]} result
- * @property {*} page
+ * @property {string} page
  */
 
 /**

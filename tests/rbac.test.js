@@ -1,8 +1,7 @@
 import http from "node:http"
 import serverSpy from "jasmine-http-server-spy"
 import Url from "url"
-import {Paginators} from "../src/rbac-management.js";
-import StyraRun from "../src/run-sdk.js"
+import StyraRun, {Paginators} from "../src/run-sdk.js"
 import {clientRequest, withServer} from "./helpers.js"
 
 describe("Roles can be fetched", () => {
@@ -238,8 +237,7 @@ describe("Bindings can be fetched", () => {
           createAuthzInput: () => {
             return authzInput
           },
-          getUsers: Paginators.makeIndexedPaginator((page !== undefined ? 2 : 0), userProducer),
-          onSetBinding: () => true
+          getUsers: Paginators.makeIndexedPaginator((page !== undefined ? 2 : 0), userProducer)
         }))
 
       await withServer(server, 8081, async () => {
