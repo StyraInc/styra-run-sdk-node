@@ -261,6 +261,16 @@ export class StyraRunClient {
   }
 
   /**
+   * @callback FilterInputCallback
+   * @param {*} item the list item to create an input value for
+   * @param {number} index the index of the list item
+   */
+  /**
+   * @callback FilterPathCallback
+   * @param {*} item the list item to create an input value for
+   * @param {number} index the index of the list item
+   */
+  /**
    * For each entry in the provided `list`, an authorization check against a policy rule specified by `path` is made.
    * Where `path` is the trailing segment of the full request path
    * `"/v1/projects/${UID}/${PID}/envs/${EID}/data/${path}"`
@@ -269,13 +279,13 @@ export class StyraRunClient {
    * On error, the returned `Promise` is rejected with a {@link StyraRunError}.
    *
    * @param {*[]} list the list to filter
-   * @param {FilterPredicateCallback} predicate the predicate callback to filter each list entry by given a policy decision
+   * @param {DecisionPredicate} predicate the predicate callback to filter each list entry by given a policy decision
    * @param {string|undefined} path the path to the policy rule to query
    * @param {FilterInputCallback} toInput optional, a callback that, given a list entry and an index, should return an `input` document
    * @param {FilterPathCallback} toPath optional, a callback that, given a list entry and an index, should return a `path` string. If provided, overrides the global `path` argument. May return a falsy value to default to the global `path`
    * @returns {Promise<*[], StyraRunError>}
    */
-  async filter(list, predicate, path = undefined, toInput = undefined, toPath = undefined) {
+  async filter(list, predicate= defaultPredicate, path = undefined, toInput = undefined, toPath = undefined) {
     if (list.length === 0) {
       return []
     }
@@ -429,6 +439,9 @@ export class StyraRunClient {
     }
   }
 
+  rbacManager() {
+    return new RbacManager(this);
+  }
 
   /**
    * A request handler providing an RBAC management endpoint.
@@ -442,20 +455,21 @@ export class StyraRunClient {
    * Returns an HTTP API function.
    *
    * @param {CreateRbacAuthzInputCallback} createAuthzInput
-   * @param {GetRbacUsersCallback} getUsers
-   * @param {OnGetRbacRoleBindingCallback} onGetRoleBinding
-   * @param {OnSetRbacRoleBindingCallback} onSetRoleBinding
-   * @param {OnDeleteRbacRoleBindingCallback} onDeleteRoleBinding
+   * @param {ListRbacUsersCallback} listUsers
+   * @param {OnGetRbacUserBindingCallback} onGetRoleBinding
+   * @param {OnSetRbacUserBindingCallback} onSetRoleBinding
+   * @param {OnDeleteRbacUserBindingCallback} onDeleteRoleBinding
    * @returns {RbacHandler}
    */
-  manageRbac({
+  rbacProxy({
+               listUsers = defaultRbacUsersCallback,
                createAuthzInput = defaultRbacAuthzInputCallback,
-               getUsers = defaultRbacUsersCallback,
                onGetRoleBinding = defaultRbacOnGetRoleBindingCallback,
                onSetRoleBinding = defaultRbacOnSetRoleBindingCallback,
                onDeleteRoleBinding = defaultRbacOnDeleteRoleBindingCallback,
              }) {
-    const manager = new RbacManager(this, getUsers, {
+    const manager = new RbacManager(this, {
+      listUsers,
       createAuthzInput,
       onGetRoleBinding,
       onSetRoleBinding,
@@ -491,7 +505,7 @@ async function defaultRbacAuthzInputCallback(_) {
   return {}
 }
 
-async function defaultOnProxyHandler(_, __, ___, input) {
+async function defaultOnProxyHandler(_, __, input) {
   return input
 }
 
@@ -510,4 +524,8 @@ export default function New(url, token, options = {}) {
 
 export {
   Paginators
+}
+
+export {
+  RbacManager
 }

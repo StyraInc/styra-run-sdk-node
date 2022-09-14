@@ -11,7 +11,6 @@ const EventType = {
 /**
  * @callback OnProxyCallback
  * @param {IncomingMessage} request the incoming HTTP request
- * @param {ServerResponse} response the outgoing HTTP response
  * @param {string} path the path to the policy rule being queried
  * @param {*} input the input document/value for the policy query
  * @returns {Promise<*>} the input document/value that should be used for the proxied policy query
@@ -57,7 +56,7 @@ export default class Proxy {
           }
 
           try {
-            const input = await this.onProxy(request, response, path, query.input)
+            const input = await this.onProxy(request, path, query.input)
             resolve({path, input})
           } catch (err) {
             reject(new StyraRunError('Error transforming input', path, err))

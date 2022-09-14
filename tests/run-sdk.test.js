@@ -724,7 +724,7 @@ describe("Proxy", () => {
       body: toApiBatchResponseBody(expectedResult)
     })
 
-    const proxyCallback = async (req, res, path, input) => {
+    const proxyCallback = async (req, path, input) => {
       return {
         ...input,
         pr: 'oxy'
