@@ -19,7 +19,7 @@ class CookieSessionInputStrategy {
 
     const cookie = getCookie(this.cookieName, request)
     if (cookie) {
-      const [tenant, subject] = cookie.split(' / ')
+      const [tenant, subject] = cookie.split('/').map((part) => part.trim())
 
       if (input === undefined) {
         return {tenant, subject}
