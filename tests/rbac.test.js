@@ -58,7 +58,7 @@ describe("Roles can be fetched", () => {
 
       const server = http.createServer()
       server.addListener('request', sdkClient.rbacProxy({
-        createAuthzInput: () => {
+        sessionInputStrategy: () => {
           return authzInput
         }
       }))
@@ -97,7 +97,7 @@ describe("Roles can be fetched", () => {
 
     const server = http.createServer()
     server.addListener('request', sdkClient.rbacProxy({
-      createAuthzInput: () => {
+      sessionInputStrategy: () => {
         return authzInput
       }
     }))
@@ -234,10 +234,10 @@ describe("Bindings can be fetched", () => {
       const server = http.createServer()
       server.addListener('request', sdkClient.rbacProxy(
         {
-          createAuthzInput: () => {
+          sessionInputStrategy: () => {
             return authzInput
           },
-          listUsers: Paginators.makeIndexedPaginator((page !== undefined ? 2 : 0), userProducer)
+          paginateUsers: Paginators.makeIndexedPaginator((page !== undefined ? 2 : 0), userProducer)
         }))
 
       await withServer(server, 8081, async () => {
@@ -332,7 +332,7 @@ describe("Bindings can be fetched", () => {
 
     const server = http.createServer()
     server.addListener('request', sdkClient.rbacProxy({
-      createAuthzInput: () => {
+      sessionInputStrategy: () => {
         return authzInput
       }
     }))
@@ -417,7 +417,7 @@ describe("Individual bindings can be fetched", () => {
     const server = http.createServer()
     server.addListener('request', sdkClient.rbacProxy(
       {
-        createAuthzInput: () => {
+        sessionInputStrategy: () => {
           return authzInput
         }
       }))
@@ -458,7 +458,7 @@ describe("Individual bindings can be fetched", () => {
       const server = http.createServer()
       server.addListener('request', sdkClient.rbacProxy(
         {
-          createAuthzInput: () => {
+          sessionInputStrategy: () => {
             return authzInput
           }
         }))
@@ -496,7 +496,7 @@ describe("Individual bindings can be fetched", () => {
 
     const server = http.createServer()
     server.addListener('request', sdkClient.rbacProxy({
-      createAuthzInput: () => {
+      sessionInputStrategy: () => {
         return authzInput
       }
     }))
@@ -580,7 +580,7 @@ describe("Bindings can be upserted", () => {
     const server = http.createServer()
     server.addListener('request', sdkClient.rbacProxy(
       {
-        createAuthzInput: () => {
+        sessionInputStrategy: () => {
           return authzInput
         }
       }))
@@ -620,7 +620,7 @@ describe("Bindings can be upserted", () => {
       const server = http.createServer()
       server.addListener('request', sdkClient.rbacProxy(
         {
-          createAuthzInput: () => {
+          sessionInputStrategy: () => {
             return authzInput
           }
         }))
@@ -663,7 +663,7 @@ describe("Bindings can be upserted", () => {
 
     const server = http.createServer()
     server.addListener('request', sdkClient.rbacProxy({
-      createAuthzInput: () => {
+      sessionInputStrategy: () => {
         return authzInput
       }
     }))
@@ -746,7 +746,7 @@ describe("Bindings can be deleted", () => {
     const server = http.createServer()
     server.addListener('request', sdkClient.rbacProxy(
       {
-        createAuthzInput: () => {
+        sessionInputStrategy: () => {
           return authzInput
         }
       }))
@@ -783,7 +783,7 @@ describe("Bindings can be deleted", () => {
       const server = http.createServer()
       server.addListener('request', sdkClient.rbacProxy(
         {
-          createAuthzInput: () => {
+          sessionInputStrategy: () => {
             return authzInput
           }
         }))
@@ -821,7 +821,7 @@ describe("Bindings can be deleted", () => {
 
     const server = http.createServer()
     server.addListener('request', sdkClient.rbacProxy({
-      createAuthzInput: () => {
+      sessionInputStrategy: () => {
         return authzInput
       }
     }))

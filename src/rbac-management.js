@@ -35,9 +35,13 @@ const TEXT_CONTENT_TYPE = {'Content-Type': 'text/plain'}
  * Callback for constructing the `input` document for RBAC management authorization policy checks.
  * The `tenant` property of this document is also used for `user_bindings` data queries, and is required.
  *
+ * Compatible with {@link DefaultSessionInputStrategy}
+ *
  * @callback CreateRbacAuthzInputCallback
  * @param {IncomingMessage} request the incoming HTTP request
  * @returns {Promise<RbacInputDocument>}
+ * @see SessionInputStrategyCallback
+ * @see DefaultSessionInputStrategy
  */
 
 /**
@@ -51,7 +55,7 @@ const TEXT_CONTENT_TYPE = {'Content-Type': 'text/plain'}
  *
  * If `limit` is set to `0`, no upper limit should be applied to the number of user identifiers to return.
  *
- * @callback ListRbacUsersCallback
+ * @callback PaginateRbacUsersCallback
  * @param {string} page
  * @param {IncomingMessage} request the incoming HTTP request
  * @returns {Promise<PageResult>} an object where the `result` property is a list if string user identifiers
@@ -100,21 +104,21 @@ export class RbacManager {
   /**
    * @param {StyraRunClient} styraRunClient
    * @param {CreateRbacAuthzInputCallback} createAuthzInput
-   * @param {ListRbacUsersCallback} listUsers
+   * @param {PaginateRbacUsersCallback} paginateUsers
    * @param {OnGetRbacUserBindingCallback} onGetUserBinding
    * @param {OnSetRbacUserBindingCallback} onSetUserBinding
    * @param {OnDeleteRbacUserBindingCallback} onDeleteUserBinding
    */
   constructor(styraRunClient,
               {
-                listUsers,
+                paginateUsers,
                 createAuthzInput,
                 onGetRoleBinding: onGetUserBinding,
                 onSetRoleBinding: onSetUserBinding,
                 onDeleteRoleBinding: onDeleteUserBinding
               } = {}) {
     this.styraRunClient = styraRunClient
-    this.listUsers = listUsers
+    this.paginateUsers = paginateUsers
     this.createAuthzInput = createAuthzInput
     this.onGetUserBinding = onGetUserBinding
     this.onSetUserBinding = onSetUserBinding
@@ -124,7 +128,7 @@ export class RbacManager {
   /**
    * Gets the list of available rule identifiers.
    *
-   * @param {*} authzInput the input document required by the manage RBAC policy rule
+   * @param {RbacInputDocument} authzInput the input document required by the manage RBAC policy rule
    * @returns {Promise<string[]>} a list of string role identifiers
    */
   async getRoles(authzInput) {
@@ -144,13 +148,13 @@ export class RbacManager {
    * @property {string[]} roles the list of role identifiers bound to the user
    */
   /**
-   * Gets a list of user bindings.
+   * Gets a list of user bindings corresponding to the provided list of user identifiers.
    *
    * @param {string[]} users the list of string identifiers for the users to retrieve bindings for
-   * @param {*} authzInput the input document required by the manage RBAC policy rule
+   * @param {RbacInputDocument} authzInput the input document required by the manage RBAC policy rule
    * @returns {Promise<UserBinding[]>} the list of user bindings
    */
-  async listUserBindings(users, authzInput) {
+  async getUserBindings(users, authzInput) {
     const tenant = getTenant(authzInput)
     await this.styraRunClient.assert(RbacPath.AUTHZ, authzInput)
 
@@ -166,10 +170,34 @@ export class RbacManager {
   }
 
   /**
+   * Lists all user bindings.
+   *
+   * Note: this function is primarily meant for systems with few user bindings stored in Styra Run,
+   * and its use is not recommended when a large amount of user bindings might get enumerated.
+   * It is recommended to use {@link getUserBindings} instead, where the number of returned bindings can be controlled by the caller.
+   *
+   * @param {RbacInputDocument} authzInput the input document required by the manage RBAC policy rule
+   * @returns {Promise<UserBinding[]>} the list of user bindings
+   */
+  async listUserBindings(authzInput) {
+    const tenant = getTenant(authzInput)
+    await this.styraRunClient.assert(RbacPath.AUTHZ, authzInput)
+
+    const bindingsByUser = await this.styraRunClient.getData(`${RbacPath.BINDINGS_PREFIX}/${tenant}`, {})
+      .then(resp => resp.result)
+
+    const bindings = Object.keys(bindingsByUser).map((id) => ({id, roles: bindingsByUser[id]}))
+
+    this.styraRunClient.signalEvent(EventType.GET_BINDINGS, {input: authzInput, bindings})
+
+    return bindings
+  }
+
+  /**
    * Gets the binding for a given user.
    *
    * @param {string} id the user identifier
-   * @param {*} authzInput the input document required by the manage RBAC policy rule
+   * @param {RbacInputDocument} authzInput the input document required by the manage RBAC policy rule
    * @returns {Promise<string[]>}
    */
   async getUserBinding(id, authzInput) {
@@ -191,7 +219,7 @@ export class RbacManager {
    *
    * @param {string} id the user identifier
    * @param {string[]} roles a list of role identifiers
-   * @param {*} authzInput the input document required by the manage RBAC policy rule
+   * @param {RbacInputDocument} authzInput the input document required by the manage RBAC policy rule
    * @returns {Promise<void>}
    */
   async setUserBinding(id, roles, authzInput) {
@@ -211,7 +239,7 @@ export class RbacManager {
    * Deletes the binding of a given user.
    *
    * @param {string} id the user identifier
-   * @param {*} authzInput the input document required by the manage RBAC policy rule
+   * @param {RbacInputDocument} authzInput the input document required by the manage RBAC policy rule
    * @returns {Promise<void>}
    */
   async deleteUserBinding(id, authzInput) {
@@ -246,11 +274,16 @@ export class RbacManager {
       }
       // GET /user_bindings
       else if (request.method === GET && pathEndsWith(url, ['user_bindings'])) {
-        const page = new URLSearchParams(url.query).get('page')
-        const usersResult = await this.listUsers(page, request)
-        const users = usersResult.result || []
-        const bindings = await this.listUserBindings(users, input)
-        responseBody = {result: bindings, page: usersResult.page}
+        if (this.paginateUsers) {
+          const page = new URLSearchParams(url.query).get('page')
+          const usersResult = await this.paginateUsers(page, request)
+          const users = usersResult.result || []
+          const bindings = await this.getUserBindings(users, input)
+          responseBody = {result: bindings, page: usersResult.page}
+        } else {
+          const bindings = await this.listUserBindings(input)
+          responseBody = {result: bindings}
+        }
       }
       // GET /user_bindings/:id
       else if (request.method === GET && pathEndsWith(url, ['user_bindings', '*'])) {

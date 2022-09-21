@@ -732,7 +732,7 @@ describe("Proxy", () => {
     }
 
     const server = http.createServer();
-    server.addListener('request', sdkClient.proxy(proxyCallback))
+    server.addListener('request', sdkClient.proxy({sessionInputStrategy: proxyCallback}))
 
     await withServer(server, 8081, async () => {
       const {response, body} = await clientRequest(8081, 'POST', '/proxy', 
@@ -755,7 +755,7 @@ describe("Proxy", () => {
     }
 
     const server = http.createServer();
-    server.addListener('request', sdkClient.proxy(proxyCallback))
+    server.addListener('request', sdkClient.proxy({sessionInputStrategy: proxyCallback}))
 
     await withServer(server, 8081, async () => {
       const {response, body} = await clientRequest(8081, 'POST', '/proxy', 
