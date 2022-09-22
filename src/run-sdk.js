@@ -1,14 +1,14 @@
 import Path from "path"
 import {ApiClient} from "./api-client.js"
 import {StyraRunError, StyraRunAssertionError, StyraRunHttpError} from "./errors.js"
-import {getBody, toJson, fromJson} from "./helpers.js"
+import {toJson, fromJson} from "./helpers.js"
 import {RbacManager} from "./rbac-management.js"
 import {BATCH_MAX_ITEMS} from "./constants.js"
 import Proxy from "./proxy.js"
 import {Paginators} from "./rbac-management.js"
+import {DefaultSessionInputStrategy} from "./session.js";
 
 // TODO: Add support for versioning/ETags for data API requests
-// TODO: Add support for fail-over/retry when server connection is broken
 
 /**
  * @module StyraRun
@@ -265,6 +265,7 @@ export class StyraRunClient {
    * @param {*} item the list item to create an input value for
    * @param {number} index the index of the list item
    */
+
   /**
    * @callback FilterPathCallback
    * @param {*} item the list item to create an input value for
@@ -285,7 +286,7 @@ export class StyraRunClient {
    * @param {FilterPathCallback} toPath optional, a callback that, given a list entry and an index, should return a `path` string. If provided, overrides the global `path` argument. May return a falsy value to default to the global `path`
    * @returns {Promise<*[], StyraRunError>}
    */
-  async filter(list, predicate= defaultPredicate, path = undefined, toInput = undefined, toPath = undefined) {
+  async filter(list, predicate = defaultPredicate, path = undefined, toInput = undefined, toPath = undefined) {
     if (list.length === 0) {
       return []
     }
@@ -429,11 +430,11 @@ export class StyraRunClient {
   /**
    * Returns an HTTP proxy function
    *
-   * @param {OnProxyCallback} onProxy callback called for every proxied policy query
+   * @param {SessionInputStrategyCallback} sessionInputStrategy callback called for every proxied policy query
    * @returns {ProxyHandler}
    */
-  proxy(onProxy = defaultOnProxyHandler) {
-    const proxy = new Proxy(this, onProxy)
+  proxy({sessionInputStrategy = DefaultSessionInputStrategy.COOKIE} = {}) {
+    const proxy = new Proxy(this, sessionInputStrategy)
     return async (request, response) => {
       await proxy.handle(request, response)
     }
@@ -452,25 +453,25 @@ export class StyraRunClient {
    */
 
   /**
-   * Returns an HTTP API function.
+   * Returns a RESTful HTTP API function for managing RBAC bindings.
    *
-   * @param {CreateRbacAuthzInputCallback} createAuthzInput
-   * @param {ListRbacUsersCallback} listUsers
+   * @param {CreateRbacAuthzInputCallback} sessionInputStrategy defaults to {@link DefaultSessionInputStrategy.COOKIE} if not specified
+   * @param {PaginateRbacUsersCallback} paginateUsers
    * @param {OnGetRbacUserBindingCallback} onGetRoleBinding
    * @param {OnSetRbacUserBindingCallback} onSetRoleBinding
    * @param {OnDeleteRbacUserBindingCallback} onDeleteRoleBinding
    * @returns {RbacHandler}
    */
   rbacProxy({
-               listUsers = defaultRbacUsersCallback,
-               createAuthzInput = defaultRbacAuthzInputCallback,
-               onGetRoleBinding = defaultRbacOnGetRoleBindingCallback,
-               onSetRoleBinding = defaultRbacOnSetRoleBindingCallback,
-               onDeleteRoleBinding = defaultRbacOnDeleteRoleBindingCallback,
-             }) {
+              paginateUsers,
+              sessionInputStrategy = DefaultSessionInputStrategy.COOKIE,
+              onGetRoleBinding = defaultRbacOnGetRoleBindingCallback,
+              onSetRoleBinding = defaultRbacOnSetRoleBindingCallback,
+              onDeleteRoleBinding = defaultRbacOnDeleteRoleBindingCallback,
+            } = {}) {
     const manager = new RbacManager(this, {
-      listUsers,
-      createAuthzInput,
+      paginateUsers,
+      createAuthzInput: sessionInputStrategy,
       onGetRoleBinding,
       onSetRoleBinding,
       onDeleteRoleBinding
@@ -523,9 +524,7 @@ export default function New(url, token, options = {}) {
 }
 
 export {
-  Paginators
-}
-
-export {
-  RbacManager
+  Paginators,
+  RbacManager,
+  DefaultSessionInputStrategy
 }

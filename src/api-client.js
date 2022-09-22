@@ -13,7 +13,7 @@ const EventType = {
 
 /**
  * Connectivity options
- * 
+ *
  * @typedef {Object} ClientOptions
  * @property {string|string[]} organizeGatewaysStrategy a named organize-gateways strategy, or a list of strategies. If one fails, the next in the list is tried.
  * @property {number} organizeGatewaysStrategyTimeout number of miliseconds deciding a organize-gateways strategy has failed, and the next strategy is used, if more than one; or an unorganized list of gateways will be returned (if asyncGatewayOrganization==false).
@@ -153,7 +153,7 @@ export class ApiClient {
         }
 
         this.signalEvent(EventType.ORGANIZE_GATEWAYS, {
-          strategy: strategyName, gateways: gatewayUrls
+          strategy: strategyName, gateways: gatewayUrls.map((url) => url.href)
         })
         resolve(gatewayUrls)
       } catch (err) {
@@ -219,7 +219,7 @@ export class ApiClient {
         }
         return this.gateways
       })
-    
+
     if (this.asyncGatewayOrganization) {
       return this.gateways
     } else {
