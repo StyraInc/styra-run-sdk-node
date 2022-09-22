@@ -1,8 +1,7 @@
 import http from "node:http"
 import serverSpy from "jasmine-http-server-spy"
 import Url from "url"
-import {Paginators} from "../src/rbac-management.js";
-import StyraRun from "../src/run-sdk.js"
+import StyraRun, {Paginators} from "../src/run-sdk.js"
 import {clientRequest, withServer} from "./helpers.js"
 
 describe("Roles can be fetched", () => {
@@ -58,8 +57,8 @@ describe("Roles can be fetched", () => {
       })
 
       const server = http.createServer()
-      server.addListener('request', sdkClient.manageRbac({
-        createAuthzInput: () => {
+      server.addListener('request', sdkClient.rbacProxy({
+        sessionInputStrategy: () => {
           return authzInput
         }
       }))
@@ -97,8 +96,8 @@ describe("Roles can be fetched", () => {
     })
 
     const server = http.createServer()
-    server.addListener('request', sdkClient.manageRbac({
-      createAuthzInput: () => {
+    server.addListener('request', sdkClient.rbacProxy({
+      sessionInputStrategy: () => {
         return authzInput
       }
     }))
@@ -233,13 +232,12 @@ describe("Bindings can be fetched", () => {
       }
 
       const server = http.createServer()
-      server.addListener('request', sdkClient.manageRbac(
+      server.addListener('request', sdkClient.rbacProxy(
         {
-          createAuthzInput: () => {
+          sessionInputStrategy: () => {
             return authzInput
           },
-          getUsers: Paginators.makeIndexedPaginator((page !== undefined ? 2 : 0), userProducer),
-          onSetBinding: () => true
+          paginateUsers: Paginators.makeIndexedPaginator((page !== undefined ? 2 : 0), userProducer)
         }))
 
       await withServer(server, 8081, async () => {
@@ -333,8 +331,8 @@ describe("Bindings can be fetched", () => {
     })
 
     const server = http.createServer()
-    server.addListener('request', sdkClient.manageRbac({
-      createAuthzInput: () => {
+    server.addListener('request', sdkClient.rbacProxy({
+      sessionInputStrategy: () => {
         return authzInput
       }
     }))
@@ -417,9 +415,9 @@ describe("Individual bindings can be fetched", () => {
     })
 
     const server = http.createServer()
-    server.addListener('request', sdkClient.manageRbac(
+    server.addListener('request', sdkClient.rbacProxy(
       {
-        createAuthzInput: () => {
+        sessionInputStrategy: () => {
           return authzInput
         }
       }))
@@ -458,9 +456,9 @@ describe("Individual bindings can be fetched", () => {
       })
 
       const server = http.createServer()
-      server.addListener('request', sdkClient.manageRbac(
+      server.addListener('request', sdkClient.rbacProxy(
         {
-          createAuthzInput: () => {
+          sessionInputStrategy: () => {
             return authzInput
           }
         }))
@@ -497,8 +495,8 @@ describe("Individual bindings can be fetched", () => {
     })
 
     const server = http.createServer()
-    server.addListener('request', sdkClient.manageRbac({
-      createAuthzInput: () => {
+    server.addListener('request', sdkClient.rbacProxy({
+      sessionInputStrategy: () => {
         return authzInput
       }
     }))
@@ -580,9 +578,9 @@ describe("Bindings can be upserted", () => {
     })
 
     const server = http.createServer()
-    server.addListener('request', sdkClient.manageRbac(
+    server.addListener('request', sdkClient.rbacProxy(
       {
-        createAuthzInput: () => {
+        sessionInputStrategy: () => {
           return authzInput
         }
       }))
@@ -620,9 +618,9 @@ describe("Bindings can be upserted", () => {
       })
 
       const server = http.createServer()
-      server.addListener('request', sdkClient.manageRbac(
+      server.addListener('request', sdkClient.rbacProxy(
         {
-          createAuthzInput: () => {
+          sessionInputStrategy: () => {
             return authzInput
           }
         }))
@@ -664,8 +662,8 @@ describe("Bindings can be upserted", () => {
     })
 
     const server = http.createServer()
-    server.addListener('request', sdkClient.manageRbac({
-      createAuthzInput: () => {
+    server.addListener('request', sdkClient.rbacProxy({
+      sessionInputStrategy: () => {
         return authzInput
       }
     }))
@@ -746,9 +744,9 @@ describe("Bindings can be deleted", () => {
     })
 
     const server = http.createServer()
-    server.addListener('request', sdkClient.manageRbac(
+    server.addListener('request', sdkClient.rbacProxy(
       {
-        createAuthzInput: () => {
+        sessionInputStrategy: () => {
           return authzInput
         }
       }))
@@ -783,9 +781,9 @@ describe("Bindings can be deleted", () => {
       })
 
       const server = http.createServer()
-      server.addListener('request', sdkClient.manageRbac(
+      server.addListener('request', sdkClient.rbacProxy(
         {
-          createAuthzInput: () => {
+          sessionInputStrategy: () => {
             return authzInput
           }
         }))
@@ -822,8 +820,8 @@ describe("Bindings can be deleted", () => {
     })
 
     const server = http.createServer()
-    server.addListener('request', sdkClient.manageRbac({
-      createAuthzInput: () => {
+    server.addListener('request', sdkClient.rbacProxy({
+      sessionInputStrategy: () => {
         return authzInput
       }
     }))
