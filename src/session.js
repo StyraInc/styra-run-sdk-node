@@ -42,12 +42,19 @@ function getCookies(request) {
   const header = request.headers['cookie']
   if (header) {
     header.split(';').forEach((cookie) => {
-      const [name, ...value] = cookie.split(`=`)
-      cookies[name.trim()] = value.join('=').trim()
+      const [name, ...value] = cookie.split(`=`)    // might drop '=' in the value
+      cookies[name.trim()] = dropDquote(value.join('=').trim()) // Adding back any '=' we dropped
     })
   }
 
   return cookies
+}
+
+function dropDquote(str) {
+  if (str.length >= 2 && str.startsWith('"'), str.endsWith('"')) {
+    return str.slice(1, str.length - 1)
+  }
+  return str
 }
 
 /**
