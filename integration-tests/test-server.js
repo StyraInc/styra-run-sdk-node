@@ -2,6 +2,15 @@ import express from 'express'
 import Url from "url";
 import {OrganizeGatewayStrategy} from "../src/api-client.js";
 import {fromJson, getBody, toJson} from "../src/helpers.js";
+import {
+  proxyRbac,
+  proxyRbacDeleteUserBinding,
+  proxyRbacGetRoles,
+  proxyRbacGetUserBinding,
+  proxyRbacGetUserBindings,
+  proxyRbacListUserBindings,
+  proxyRbacPutUserBinding
+} from "../src/rbac-proxy.js";
 import StyraRun, {DefaultSessionInputStrategy, Paginators} from "../src/run-sdk.js"
 
 const JSON_CONTENT_TYPE = {'Content-Type': 'application/json'}
@@ -15,7 +24,9 @@ const styraRun = StyraRun('http://localhost:4000', token, {
   connectionOptions: {
     organizeGatewaysStrategy: OrganizeGatewayStrategy.None
   },
-  eventListeners: [(type, info) => { console.log(type, info) }]
+  eventListeners: [(type, info) => {
+    console.log(type, info)
+  }]
 })
 
 //
@@ -109,14 +120,19 @@ app.delete('/data/*', async (request, response) => {
 //
 
 const users = ['alice', 'bob', 'bryan', 'emily', 'harold', 'vivian']
+const paginator = Paginators.makeIndexedPaginator(3,
+  (offset, limit, _) => users.slice(offset, offset + limit),
+  (_) => users.length)
 
-app.all('/rbac/*', styraRun.rbacProxy({
-  paginateUsers: Paginators.makeIndexedPaginator(3,
-    (offset, limit, _) => users.slice(offset, offset + limit),
-    (_) => users.length)
-}))
 
-app.all('/rbac2/*', styraRun.rbacProxy())
+// app.all('/rbac/*', proxyRbac(styraRun.rbacManager()))
+
+app.get('/roles', proxyRbacGetRoles(styraRun.rbacManager()))
+app.get('/user_bindings/*', proxyRbacGetUserBinding(styraRun.rbacManager()))
+app.delete('/user_bindings/*', proxyRbacDeleteUserBinding(styraRun.rbacManager()))
+app.put('/user_bindings/*', proxyRbacPutUserBinding(styraRun.rbacManager()))
+app.get('/user_bindings_all', proxyRbacListUserBindings(styraRun.rbacManager()))
+app.get('/user_bindings', proxyRbacGetUserBindings(styraRun.rbacManager(), paginator))
 
 app.listen(port, host, () => {
   console.info(`Server started on port: ${port}`)

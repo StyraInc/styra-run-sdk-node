@@ -5,6 +5,11 @@ import { StyraRunError, StyraRunHttpError } from "./errors.js";
 
 export const OK = 200
 
+export const Headers = {
+  JSON_CONTENT_TYPE: {'Content-Type': 'application/json'},
+  TEXT_CONTENT_TYPE: {'Content-Type': 'text/plain'}
+}
+
 export async function httpRequest(options, data = undefined) {
   return new Promise((resolve, reject) => {
     try {

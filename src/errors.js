@@ -47,3 +47,15 @@ export class TimeoutError extends Error {
     this.timeout = timeout
   }
 }
+
+export class InvalidInputError extends Error {
+  constructor(message) {
+    super(message)
+  }
+}
+
+export class ApiError extends Error {
+  constructor(message, cause) {
+    super(message, cause)
+  }
+}

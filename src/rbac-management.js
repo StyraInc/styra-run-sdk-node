@@ -1,17 +1,17 @@
 import Url from "url"
 import {getBody, toJson, fromJson, pathEndsWith, parsePathParameters} from "./helpers.js"
-import {StyraRunError} from "./errors.js"
+import {ApiError, InvalidInputError, StyraRunError} from "./errors.js"
 import {Method} from "./types.js"
 
 const {GET, PUT, DELETE} = Method
 
-const EventType = {
+export const EventType = {
   RBAC: 'rbac',
   GET_ROLES: 'rbac-get-roles',
-  GET_BINDING: 'rbac-get-role-binding',
-  GET_BINDINGS: 'rbac-get-role-bindings',
-  SET_BINDING: 'rbac-set-role-binding',
-  DELETE_BINDING: 'rbac-delete-role-binding'
+  GET_BINDING: 'rbac-get-user-binding',
+  GET_BINDINGS: 'rbac-get-user-bindings',
+  SET_BINDING: 'rbac-set-user-binding',
+  DELETE_BINDING: 'rbac-delete-user-binding'
 }
 
 const RbacPath = {
@@ -393,18 +393,6 @@ export class Paginators {
       const result = await producer(offset, pageSize, request)
       return {result, page: {index, total: totalPages}}
     }
-  }
-}
-
-class InvalidInputError extends Error {
-  constructor(message) {
-    super(message)
-  }
-}
-
-class ApiError extends Error {
-  constructor(message, cause) {
-    super(message, cause)
   }
 }
 
