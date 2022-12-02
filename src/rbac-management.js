@@ -391,7 +391,7 @@ export class Paginators {
 
       const offset = Math.max(index - 1, 0) * pageSize
       const result = await producer(offset, pageSize, request)
-      return {result, page: {index, of: totalPages}}
+      return {result, page: {index, total: totalPages}}
     }
   }
 }
