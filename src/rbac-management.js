@@ -83,7 +83,8 @@ export class RbacManager {
    *
    * Note: this function is primarily meant for systems with few user bindings stored in Styra Run,
    * and its use is not recommended when a large amount of user bindings might get enumerated.
-   * It is recommended to use {@link getUserBindings} instead, where the number of returned bindings can be controlled by the caller.
+   * It is recommended to use {@link getUserBindings} instead, where the number of returned bindings can be controlled
+   * for by the caller.
    *
    * @param {RbacInputDocument} authzInput the input document required by the manage RBAC policy rule
    * @returns {Promise<UserBinding[]>} the list of user bindings

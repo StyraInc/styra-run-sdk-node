@@ -853,7 +853,7 @@ describe('indexed paginator', () => {
         return []
       })
 
-      paginator(`${index}`, undefined)
+      paginator(`${index}`, undefined, undefined)
 
       expect(appliedOffset).toBe(expectedOffset)
       expect(appliedLimit).toBe(expectedLimit)
@@ -879,7 +879,7 @@ describe('indexed paginator', () => {
         return ['alice', 'bob']
       }, getCount)
 
-      const result = await paginator(`${index}`, undefined)
+      const result = await paginator(`${index}`, undefined, undefined)
 
       expect(result.result).toEqual(['alice', 'bob'])
 

@@ -484,15 +484,15 @@ async function defaultRbacUsersCallback(_, __) {
   return []
 }
 
-async function defaultRbacOnGetRoleBindingCallback(_, __) {
+async function defaultRbacOnGetRoleBindingCallback(_, __, ___) {
   return true
 }
 
-async function defaultRbacOnSetRoleBindingCallback(_, __, ___) {
+async function defaultRbacOnSetRoleBindingCallback(_, __, ___, ____) {
   return true
 }
 
-async function defaultRbacOnDeleteRoleBindingCallback(_, __) {
+async function defaultRbacOnDeleteRoleBindingCallback(_, __, ___) {
   return true
 }
 

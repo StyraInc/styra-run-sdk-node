@@ -120,9 +120,9 @@ app.delete('/data/*', async (request, response) => {
 //
 
 const users = ['alice', 'bob', 'bryan', 'emily', 'harold', 'vivian']
-const paginator = Paginators.makeIndexedPaginator(3,
-  (offset, limit, _) => users.slice(offset, offset + limit),
-  (_) => users.length)
+const userProducer = async (offset, limit, _, __) => users.slice(offset, offset + limit)
+const userCounter = async (_, __) => users.length
+const paginator = Paginators.makeIndexedPaginator(3, userProducer, userCounter)
 
 
 // app.all('/rbac/*', proxyRbac(styraRun.rbacManager()))

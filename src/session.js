@@ -62,7 +62,7 @@ function dropDquote(str) {
  * The cookie value is expected to have the format `<tenant> / <subject>`.
  *
  * @param {string} cookieName the name of the cookie on the incoming HTTP request
- * @returns {function(*, *, *): *|{subject: *, tenant: *}|(*&{subject: *, tenant: *})}
+ * @returns {SessionInputStrategyCallback}
  */
 export function newCookieSessionInputStrategy({cookieName = 'user'} = {}) {
   const strategy = new CookieSessionInputStrategy(cookieName)

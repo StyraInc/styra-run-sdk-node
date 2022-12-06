@@ -42,6 +42,7 @@ export const DefaultFunctions = {
  *
  * @callback PaginateRbacUsersCallback
  * @param {string} page
+ * @param {RbacInputDocument} authzInput the input value for the authorization query
  * @param {IncomingMessage} request the incoming HTTP request
  * @returns {Promise<PageResult>} an object where the `result` property is a list if string user identifiers
  */
@@ -252,7 +253,7 @@ export default class RbacProxy {
         const authzInput = await this.createAuthzInput(request)
         const url = Url.parse(request.url)
         const page = new URLSearchParams(url.query).get('page')
-        const usersResult = await this.paginateUsers(page, request)
+        const usersResult = await this.paginateUsers(page, authzInput, request)
         const users = usersResult.result || []
 
         const result = await this.rbacManager.getUserBindings(users, authzInput)
@@ -270,6 +271,7 @@ export class Paginators {
   /**
    * @callback GetPagedDataCallback
    * @param {string} page
+   * @param {RbacInputDocument} authzInput the input value for the authorization query
    * @param {IncomingMessage} request
    * @returns {Promise<PageResult>}
    */
@@ -282,13 +284,15 @@ export class Paginators {
    * @callback GetIndexedDataCallback
    * @param {number} offset an integer index for where in the list of users to start enumerating
    * @param {number} limit an integer number of users to enumerate, starting at `offset`
+   * @param {RbacInputDocument} authzInput the input value for the authorization query
    * @param {IncomingMessage} request the incoming HTTP request
-   * @returns {Promise<PageResult>} a list if string user identifiers
+   * @returns {Promise<string[]>} a list if string user identifiers
    */
 
   /**
    * @callback GetTotalCountCallback
-   * @param {ServerRequest} request
+   * @param {RbacInputDocument} authzInput the input value for the authorization query
+   * @param {IncomingMessage} request
    * @returns {Promise<number>} total count of data entries available
    */
 
@@ -302,7 +306,7 @@ export class Paginators {
    * @returns {GetPagedDataCallback}
    */
   static makeIndexedPaginator(pageSize, producer, getTotalCount = undefined) {
-    return async (page, request) => {
+    return async (page, authzInput, request) => {
       const index = page ? Math.max(parseInt(page), 1) : 1
       if (isNaN(index)) {
         throw new InvalidInputError("'page' is not a valid number")
@@ -312,12 +316,12 @@ export class Paginators {
       if (pageSize === 0) {
         totalPages = 1
       } else if (getTotalCount) {
-        const totalCount = await getTotalCount(request)
+        const totalCount = await getTotalCount(authzInput, request)
         totalPages = Math.ceil(totalCount / pageSize)
       }
 
       const offset = Math.max(index - 1, 0) * pageSize
-      const result = await producer(offset, pageSize, request)
+      const result = await producer(offset, pageSize, authzInput, request)
       return {result, page: {index, total: totalPages}}
     }
   }
