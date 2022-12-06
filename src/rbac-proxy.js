@@ -1,6 +1,6 @@
 import Url from "url";
 import {InvalidInputError, StyraRunError} from "./errors.js";
-import {toJson, Headers, getBody, fromJson, pathEndsWith} from "./helpers.js";
+import {toJson, Headers, getBody, fromJson, pathEndsWith, parsePathParameters} from "./helpers.js";
 import {EventType} from "./rbac-management.js";
 import {DefaultSessionInputStrategy} from "./session.js";
 import {Method} from "./types.js"
@@ -8,10 +8,12 @@ import {Method} from "./types.js"
 const {GET, PUT, DELETE} = Method
 
 export const DefaultFunctions = {
-  // TODO: check path
+  /**
+   * Default {@link GetUserId} callback for extracting the user ID from URL paths of the format `** /user_bindings/<userId>`
+   */
   getUserIdFromPathParam: (_, request) => {
-    const path = Url.parse(request.url).path.split('/')
-    return path[path.length - 1]
+    const {userId} = parsePathParameters(Url.parse(request.url), ['user_bindings', ':userId'])
+    return userId
   },
   getNoUserId: () => null,
 }
