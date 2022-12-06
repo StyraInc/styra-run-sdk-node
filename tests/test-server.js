@@ -20,9 +20,61 @@ const serverHost = '127.0.0.1'
 const apiPort = 4000
 const apiHost = '127.0.0.1'
 const token = 'foobar'
-const app = express()
 
-function setup(app, enableLogging = false) {
+export default class TestServer {
+  constructor({logging = false} = {}) {
+    this.logging = logging
+    this.app = setup(logging)
+  }
+
+  start() {
+    if (this.logging) {
+      console.info('Starting server')
+    }
+    return new Promise((resolve, reject) => {
+      try {
+        this.server = this.app.listen(serverPort, serverHost, () => {
+          if (this.logging) {
+            console.info(`Server started on port: ${serverPort}`)
+          }
+          resolve()
+        })
+      } catch (err) {
+        if (this.logging) {
+          console.info(`Server failed to start on port: ${serverPort}`, err)
+        }
+        reject(err)
+      }
+    })
+  }
+
+  stop() {
+    if (this.logging) {
+      console.info('Stopping server')
+    }
+    return new Promise((resolve, reject) => {
+      try {
+        if (this.server) {
+          this.server.close(() => {
+            if (this.logging) {
+              console.info(`Server stopped`)
+            }
+            this.server = null
+            resolve()
+          })
+        } else {
+          reject(new Error("No server started"))
+        }
+      } catch (err) {
+        reject(err)
+      }
+    })
+  }
+}
+
+function setup(enableLogging = false) {
+  const app = express()
+
   const eventListeners = enableLogging ? [(type, info) => {console.log(type, info)}] : []
   const styraRun = StyraRun(`http://${apiHost}:${apiPort}`, token, {
     connectionOptions: {
@@ -126,7 +178,6 @@ function setup(app, enableLogging = false) {
   const userCounter = async (_, __) => users.length
   const paginator = Paginators.makeIndexedPaginator(3, userProducer, userCounter)
 
-
 // app.all('/rbac/*', proxyRbac(styraRun.rbacManager()))
 
   app.get('/roles', proxyRbacGetRoles(styraRun.rbacManager()))
@@ -135,55 +186,8 @@ function setup(app, enableLogging = false) {
   app.put('/user_bindings/*', proxyRbacPutUserBinding(styraRun.rbacManager()))
   app.get('/user_bindings_all', proxyRbacListUserBindings(styraRun.rbacManager()))
   app.get('/user_bindings', proxyRbacGetUserBindings(styraRun.rbacManager(), paginator))
-}
 
-let server = null
-let loggingEnabled = false
-export function startServer(enableLogging = false) {
-  loggingEnabled = enableLogging
-  setup(app, enableLogging)
-
-  if (enableLogging) {
-    console.info('Starting server')
-  }
-  return new Promise((resolve, reject) => {
-    try {
-      server = app.listen(serverPort, serverHost, () => {
-        if (enableLogging) {
-          console.info(`Server started on port: ${serverPort}`)
-        }
-        resolve()
-      })
-    } catch (err) {
-      if (enableLogging) {
-        console.info(`Server failed to start on port: ${serverPort}`, err)
-      }
-      reject(err)
-    }
-  })
-}
-
-export function stopServer() {
-  if (loggingEnabled) {
-    console.info('Stopping server')
-  }
-  return new Promise((resolve, reject) => {
-    try {
-      if (server) {
-        server.close(() => {
-          if (loggingEnabled) {
-            console.info(`Server stopped`)
-          }
-          server = null
-          resolve()
-        })
-      } else {
-        reject(new Error("No server started"))
-      }
-    } catch (err) {
-      reject(err)
-    }
-  })
+  return app
 }
 
 function dropDataPrefix(str) {

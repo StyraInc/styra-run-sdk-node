@@ -1,3 +1,3 @@
-import {startServer} from "./test-server.js";
+import TestServer from "./test-server.js";
 
-startServer(true)
+new TestServer({logging: true}).start()

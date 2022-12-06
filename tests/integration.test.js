@@ -1,15 +1,16 @@
 import {exec} from "child_process";
-import {startServer,stopServer} from "./test-server.js";
+import TestServer from "./test-server.js";
 
 describe("Integration tests", () => {
   it("pass", async () => {
-    await startServer()
+    const server = new TestServer()
+    await server.start()
 
     const process = await asyncExec("cd ./styra-run-sdk-tests && make test")
 
     expect(process.proc.exitCode).withContext(process.stdout).toBe(0)
 
-    await stopServer()
+    await server.stop()
   }, 30_000)
 })
 
