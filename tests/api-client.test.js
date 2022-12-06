@@ -114,8 +114,8 @@ describe("Gateway lookup:", () => {
             ]
         }
 
-        const client = new ApiClient(url, token, { 
-            organizeGatewaysStrategy: 'custom', 
+        const client = new ApiClient(url, token, {
+            organizeGatewaysStrategy: 'custom',
             asyncGatewayOrganization: false,
             organizeGatewaysStrategyTimeout: 0
         })
@@ -177,8 +177,8 @@ describe("Gateway lookup:", () => {
             ]
         }
 
-        const client = new ApiClient(url, token, { 
-            organizeGatewaysStrategy: 'custom', 
+        const client = new ApiClient(url, token, {
+            organizeGatewaysStrategy: 'custom',
             asyncGatewayOrganization: false,
             organizeGatewaysStrategyTimeout: 500
         })
@@ -223,7 +223,7 @@ describe("Gateway lookup:", () => {
 
     it("organize-gateways strategy is executed asynchronously", async () => {
         let organizeGatewaysCallCount = 0
-        
+
         let release
         let releaseLatch = async () => release()
         const latch = new Promise((resolve) => release = async () => resolve())
@@ -244,7 +244,7 @@ describe("Gateway lookup:", () => {
             ]
         }
 
-        const client = new ApiClient(url, token, { 
+        const client = new ApiClient(url, token, {
             organizeGatewaysStrategy: 'custom'
         })
 
@@ -311,8 +311,8 @@ describe("Gateway lookup:", () => {
             ]
         }
 
-        const client = new ApiClient(url, token, { 
-            organizeGatewaysStrategy: ['failing', 'ok'], 
+        const client = new ApiClient(url, token, {
+            organizeGatewaysStrategy: ['failing', 'ok'],
             asyncGatewayOrganization: false
         })
 
@@ -376,8 +376,8 @@ describe("Gateway lookup:", () => {
             ]
         }
 
-        const client = new ApiClient(url, token, { 
-            organizeGatewaysStrategy: ['failing', 'ok'], 
+        const client = new ApiClient(url, token, {
+            organizeGatewaysStrategy: ['failing', 'ok'],
             asyncGatewayOrganization: false,
             organizeGatewaysStrategyTimeout: 500
         })
@@ -570,9 +570,9 @@ describe("Gateway failover", () => {
 
     it("failed requests will be retried against the next gateway in the list", async () => {
         // Set client.gateways directly; call to /gateways API endpoint is tested elsewhere
-        const client = new ApiClient('http://placeholder', token, { 
-            maxRetries: 10, 
-            organizeGatewaysStrategy: 'none' 
+        const client = new ApiClient('http://placeholder', token, {
+            maxRetries: 10,
+            organizeGatewaysStrategy: 'none'
         })
         client.gateways = [
             Url.parse('http://localhost/no/listener'),
@@ -605,8 +605,8 @@ describe("Gateway failover", () => {
 
     it("max retries setting is respected", async () => {
         // Set client.gateways directly; call to /gateways API endpoint is tested elsewhere
-        const client = new ApiClient('http://placeholder', token, { 
-            maxRetries: 2, 
+        const client = new ApiClient('http://placeholder', token, {
+            maxRetries: 2,
             organizeGatewaysStrategy: 'none'
          })
         client.gateways = [
@@ -642,7 +642,7 @@ describe("Gateway failover", () => {
     it("retry count won't exceed gateway length", async () => {
         // Set client.gateways directly; call to /gateways API endpoint is tested elsewhere
         const client = new ApiClient('http://placeholder', token, {
-             maxRetries: 100, 
+             maxRetries: 100,
              organizeGatewaysStrategy: 'none'
             })
         client.gateways = [
@@ -735,7 +735,7 @@ describe("Default organize-gateways callback", () => {
             unorganizedGateways.forEach((gateway) => {
                 expect(organizedGateways).toContain(gateway)
             })
-            
+
             expectation(region, zoneId, organizedGateways)
         }
     }
