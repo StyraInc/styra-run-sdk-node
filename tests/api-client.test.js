@@ -513,11 +513,6 @@ describe("Gateway failover", () => {
             },
             {
                 method: 'get',
-                url: '/500/api',
-                handlerName: 'get500Url'
-            },
-            {
-                method: 'get',
                 url: '/502/api',
                 handlerName: 'get502Url'
             },
@@ -541,11 +536,6 @@ describe("Gateway failover", () => {
         httpSpy.get421Url.and.returnValue({
             statusCode: 421,
             body: 'Misdirected Request'
-        })
-
-        httpSpy.get500Url.and.returnValue({
-            statusCode: 500,
-            body: 'Internal Server Error'
         })
 
         httpSpy.get502Url.and.returnValue({
@@ -573,7 +563,6 @@ describe("Gateway failover", () => {
     afterEach(function () {
         httpSpy.getOkUrl.calls.reset()
         httpSpy.get421Url.calls.reset()
-        httpSpy.get500Url.calls.reset()
         httpSpy.get502Url.calls.reset()
         httpSpy.get503Url.calls.reset()
         httpSpy.get504Url.calls.reset()
@@ -588,7 +577,6 @@ describe("Gateway failover", () => {
         client.gateways = [
             Url.parse('http://localhost/no/listener'),
             Url.parse(`${baseUrl}/421`),
-            Url.parse(`${baseUrl}/500`),
             Url.parse(`${baseUrl}/502`),
             Url.parse(`${baseUrl}/503`),
             Url.parse(`${baseUrl}/504`),
@@ -599,9 +587,6 @@ describe("Gateway failover", () => {
         expect(JSON.parse(result)).toEqual(expectedData)
 
         expect(httpSpy.get421Url).toHaveBeenCalledWith(jasmine.objectContaining({
-            body: {}
-        }))
-        expect(httpSpy.get500Url).toHaveBeenCalledWith(jasmine.objectContaining({
             body: {}
         }))
         expect(httpSpy.get502Url).toHaveBeenCalledWith(jasmine.objectContaining({
@@ -627,7 +612,6 @@ describe("Gateway failover", () => {
         client.gateways = [
             Url.parse('http://localhost/no/listener'),
             Url.parse(`${baseUrl}/421`),
-            Url.parse(`${baseUrl}/500`),
             Url.parse(`${baseUrl}/502`),
             Url.parse(`${baseUrl}/503`),
             Url.parse(`${baseUrl}/504`),
@@ -638,19 +622,18 @@ describe("Gateway failover", () => {
             const result = await client.get('api')
             fail(`Expected error, got: ${result}`)
         } catch (err) {
-            expect(err.message).toBe('Unexpected status code: 500')
-            expect(err.body).toBe('Internal Server Error')
-            expect(err.statusCode).toBe(500)
+            expect(err.message).toBe('Unexpected status code: 502')
+            expect(err.body).toBe('Bad Gateway')
+            expect(err.statusCode).toBe(502)
             expect(err.attempts).toBe(3)
         }
 
         expect(httpSpy.get421Url).toHaveBeenCalledWith(jasmine.objectContaining({
             body: {}
         }))
-        expect(httpSpy.get500Url).toHaveBeenCalledWith(jasmine.objectContaining({
+        expect(httpSpy.get502Url).toHaveBeenCalledWith(jasmine.objectContaining({
             body: {}
         }))
-        expect(httpSpy.get502Url).toHaveBeenCalledTimes(0)
         expect(httpSpy.get503Url).toHaveBeenCalledTimes(0)
         expect(httpSpy.get504Url).toHaveBeenCalledTimes(0)
         expect(httpSpy.getOkUrl).toHaveBeenCalledTimes(0)
@@ -663,24 +646,24 @@ describe("Gateway failover", () => {
              organizeGatewaysStrategy: 'none'
             })
         client.gateways = [
-            Url.parse(`${baseUrl}/500`)
+            Url.parse(`${baseUrl}/502`)
         ]
 
         try {
             const result = await client.get('api')
             fail(`Expected error, got: ${result}`)
         } catch (err) {
-            expect(err.message).toBe('Unexpected status code: 500')
-            expect(err.body).toBe('Internal Server Error')
-            expect(err.statusCode).toBe(500)
+            expect(err.message).toBe('Unexpected status code: 502')
+            expect(err.body).toBe('Bad Gateway')
+            expect(err.statusCode).toBe(502)
             expect(err.attempts).toBe(1)
         }
 
         expect(httpSpy.get421Url).toHaveBeenCalledTimes(0)
-        expect(httpSpy.get500Url).toHaveBeenCalledOnceWith(jasmine.objectContaining({
+        expect(httpSpy.get502Url).toHaveBeenCalledOnceWith(jasmine.objectContaining({
             body: {}
         }))
-        expect(httpSpy.get502Url).toHaveBeenCalledTimes(0)
+        // expect(httpSpy.get502Url).toHaveBeenCalledTimes(0)
         expect(httpSpy.get503Url).toHaveBeenCalledTimes(0)
         expect(httpSpy.get504Url).toHaveBeenCalledTimes(0)
         expect(httpSpy.getOkUrl).toHaveBeenCalledTimes(0)

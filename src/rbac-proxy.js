@@ -8,30 +8,129 @@ import {Method} from "./types.js"
 const {GET, PUT, DELETE} = Method
 
 export const DefaultFunctions = {
-  getUserId: (request) => {
+  // TODO: check path
+  getUserIdFromPathParam: (_, request) => {
     const path = Url.parse(request.url).path.split('/')
     return path[path.length - 1]
   },
+  getNoUserId: () => null,
 }
 
+/**
+ * Callback for constructing the `input` document for RBAC management authorization policy checks.
+ * The `tenant` property of this document is also used for `user_bindings` data queries, and is required.
+ *
+ * Compatible with {@link DefaultSessionInputStrategy}
+ *
+ * @callback CreateRbacAuthzInputCallback
+ * @param {IncomingMessage} request the incoming HTTP request
+ * @returns {Promise<RbacInputDocument>}
+ * @see SessionInputStrategyCallback
+ * @see DefaultSessionInputStrategy
+ */
+
+/**
+ * @typedef {Object} PageResult
+ * @property {*[]} result
+ * @property {string} page
+ */
+
+/**
+ * Callback for enumerating string identifiers for known users.
+ *
+ * If `limit` is set to `0`, no upper limit should be applied to the number of user identifiers to return.
+ *
+ * @callback PaginateRbacUsersCallback
+ * @param {string} page
+ * @param {IncomingMessage} request the incoming HTTP request
+ * @returns {Promise<PageResult>} an object where the `result` property is a list if string user identifiers
+ */
+
+/**
+ * A callback that is invoked when a binding is about to be fetched.
+ * Must return a boolean, where `true` indicates there exists a user corresponding to `id` and the binding
+ * may be returned, and `false` that it must not be returned.
+ *
+ * @callback OnGetRbacUserBindingCallback
+ * @param {string} id the user identifier for the binding to be fetched
+ * @param {RbacInputDocument} authzInput the input value for the authorization query
+ * @param {IncomingMessage} request the incoming HTTP request
+ * @returns {Promise<boolean>} `true`, if the incoming binding fetch is allowed; `false` otherwise
+ */
+
+/**
+ * A callback that is invoked when a binding is about to be upserted.
+ * Must return a boolean, where `true` indicates there is a user corresponding to `id` and the binding may be
+ * created, and `false` that it must not be created.
+ *
+ * When called, implementations may create new users if necessary.
+ *
+ * @callback OnSetRbacUserBindingCallback
+ * @param {string} id the user identifier for the incoming binding
+ * @param {string[]} roles the roles to be bound to the user
+ * @param {RbacInputDocument} authzInput the input value for the authorization query
+ * @param {IncomingMessage} request the incoming HTTP request
+ * @returns {Promise<boolean>} `true`, if the incoming binding upsert is allowed; `false` otherwise
+ */
+
+/**
+ * A callback that is invoked when a binding is about to be deleted.
+ * Must return a boolean, where `true` indicates there exists a user corresponding to `id` and the binding
+ * may be deleted, and `false` that it must not be deleted.
+ *
+ * @callback OnDeleteRbacUserBindingCallback
+ * @param {string} id the user identifier for the binding to be deleted
+ * @param {RbacInputDocument} authzInput the input value for the authorization query
+ * @param {IncomingMessage} request the incoming HTTP request
+ * @returns {Promise<boolean>} `true`, if the incoming binding delete is allowed; `false` otherwise
+ */
+
+/**
+ * @callback GetUserId
+ * @param {RbacInputDocument} input the input value for any authorization query
+ * @param {IncomingMessage} request the incoming HTTP request
+ * @returns {Promise<string>} the ID of the user the request pertains to
+ */
+
 export default class RbacProxy {
+  /**
+   * @param {RbacManager} rbacManager
+   * @param {CreateRbacAuthzInputCallback} createAuthzInput
+   * @param {PaginateRbacUsersCallback} paginateUsers
+   * @param {GetUserId} getUserId
+   * @param {OnGetRbacUserBindingCallback} onGetUserBinding
+   * @param {OnSetRbacUserBindingCallback} onSetUserBinding
+   * @param {OnDeleteRbacUserBindingCallback} onDeleteUserBinding
+   */
   constructor(rbacManager,
               {
                 createAuthzInput,
                 paginateUsers,
-                getUserId = () => null
+                getUserId = DefaultFunctions.getNoUserId,
+                onGetUserBinding,
+                onSetUserBinding,
+                onDeleteUserBinding
               }) {
     this.rbacManager = rbacManager
     this.createAuthzInput = createAuthzInput
     this.paginateUsers = paginateUsers
     this.getUserId = getUserId
+    this.onGetUserBinding = onGetUserBinding
+    this.onSetUserBinding = onSetUserBinding
+    this.onDeleteUserBinding = onDeleteUserBinding
   }
 
+  /**
+   * A request handler providing an RBAC management endpoint for getting roles.
+   *
+   * @param {IncomingMessage} request the incoming HTTP request
+   * @param {ServerResponse} response the outgoing HTTP response
+   */
   async handleGetRoles(request, response) {
     if (checkMethod('GET', request, response)) {
       try {
-        const input = await this.createAuthzInput(request)
-        const result = await this.rbacManager.getRoles(input)
+        const authzInput = await this.createAuthzInput(request)
+        const result = await this.rbacManager.getRoles(authzInput)
 
         response.writeHead(200, Headers.JSON_CONTENT_TYPE)
         response.end(toJson({result}))
@@ -41,12 +140,23 @@ export default class RbacProxy {
     }
   }
 
+  /**
+   * A request handler providing an RBAC management endpoint for getting a user-binding.
+   *
+   * @param {IncomingMessage} request the incoming HTTP request
+   * @param {ServerResponse} response the outgoing HTTP response
+   */
   async handleGetUserBinding(request, response) {
     if (checkMethod('GET', request, response)) {
       try {
-        const input = await this.createAuthzInput(request)
-        const userId = await this.getUserId(request)
-        const result = await this.rbacManager.getUserBinding(userId, input)
+        const authzInput = await this.createAuthzInput(request)
+        const userId = await this.getUserId(authzInput, request)
+
+        if (this.onGetUserBinding && !(await this.onGetUserBinding(userId, authzInput, request))) {
+          throw new InvalidInputError(`Get role binding rejected`)
+        }
+
+        const result = await this.rbacManager.getUserBinding(userId, authzInput)
 
         response.writeHead(200, Headers.JSON_CONTENT_TYPE)
         response.end(toJson({result}))
@@ -56,12 +166,23 @@ export default class RbacProxy {
     }
   }
 
+  /**
+   * A request handler providing an RBAC management endpoint for deleting a user-binding.
+   *
+   * @param {IncomingMessage} request the incoming HTTP request
+   * @param {ServerResponse} response the outgoing HTTP response
+   */
   async handleDeleteUserBinding(request, response) {
     if (checkMethod('DELETE', request, response)) {
       try {
-        const input = await this.createAuthzInput(request)
-        const userId = await this.getUserId(request)
-        const result = await this.rbacManager.deleteUserBinding(userId, input)
+        const authzInput = await this.createAuthzInput(request)
+        const userId = await this.getUserId(authzInput, request)
+
+        if (this.onDeleteUserBinding && !(await this.onDeleteUserBinding(userId, authzInput, request))) {
+          throw new InvalidInputError(`Delete role binding rejected`)
+        }
+
+        const result = await this.rbacManager.deleteUserBinding(userId, authzInput)
 
         response.writeHead(200, Headers.JSON_CONTENT_TYPE)
         response.end(toJson({result}))
@@ -71,15 +192,25 @@ export default class RbacProxy {
     }
   }
 
+  /**
+   * A request handler providing an RBAC management endpoint for upserting a user-binding.
+   *
+   * @param {IncomingMessage} request the incoming HTTP request
+   * @param {ServerResponse} response the outgoing HTTP response
+   */
   async handlePutUserBinding(request, response) {
     if (checkMethod('PUT', request, response)) {
       try {
-        const input = await this.createAuthzInput(request)
-        const userId = await this.getUserId(request)
+        const authzInput = await this.createAuthzInput(request)
+        const userId = await this.getUserId(authzInput, request)
         const body = await getBody(request)
         const roles = await sanitizeBinding(userId, fromJson(body), request)
 
-        const result = await this.rbacManager.setUserBinding(userId, roles, input)
+        if (this.onSetUserBinding && !(await this.onSetUserBinding(userId, roles, authzInput, request))) {
+          throw new InvalidInputError(`Set role binding rejected`)
+        }
+
+        const result = await this.rbacManager.setUserBinding(userId, roles, authzInput)
 
         response.writeHead(200, Headers.JSON_CONTENT_TYPE)
         response.end(toJson({result}))
@@ -89,11 +220,17 @@ export default class RbacProxy {
     }
   }
 
+  /**
+   * A request handler providing an RBAC management endpoint for listing user-bindings.
+   *
+   * @param {IncomingMessage} request the incoming HTTP request
+   * @param {ServerResponse} response the outgoing HTTP response
+   */
   async handleListUserBindings(request, response) {
     if (checkMethod('GET', request, response)) {
       try {
-        const input = await this.createAuthzInput(request)
-        const result = await this.rbacManager.listUserBindings(input)
+        const authzInput = await this.createAuthzInput(request)
+        const result = await this.rbacManager.listUserBindings(authzInput)
 
         response.writeHead(200, Headers.JSON_CONTENT_TYPE)
         response.end(toJson({result}))
@@ -103,16 +240,22 @@ export default class RbacProxy {
     }
   }
 
+  /**
+   * A request handler providing an RBAC management endpoint for getting a list of user-bindings.
+   *
+   * @param {IncomingMessage} request the incoming HTTP request
+   * @param {ServerResponse} response the outgoing HTTP response
+   */
   async handleGetUserBindings(request, response) {
     if (checkMethod('GET', request, response)) {
       try {
-        const input = await this.createAuthzInput(request)
+        const authzInput = await this.createAuthzInput(request)
         const url = Url.parse(request.url)
         const page = new URLSearchParams(url.query).get('page')
         const usersResult = await this.paginateUsers(page, request)
         const users = usersResult.result || []
 
-        const result = await this.rbacManager.getUserBindings(users, input)
+        const result = await this.rbacManager.getUserBindings(users, authzInput)
 
         response.writeHead(200, Headers.JSON_CONTENT_TYPE)
         response.end(toJson({result, page: usersResult.page}))
@@ -123,6 +266,78 @@ export default class RbacProxy {
   }
 }
 
+export class Paginators {
+  /**
+   * @callback GetPagedDataCallback
+   * @param {string} page
+   * @param {IncomingMessage} request
+   * @returns {Promise<PageResult>}
+   */
+
+  /**
+   * Callback for enumerating string identifiers for known users.
+   *
+   * If `limit` is set to `0`, no upper limit should be applied to the number of user identifiers to return.
+   *
+   * @callback GetIndexedDataCallback
+   * @param {number} offset an integer index for where in the list of users to start enumerating
+   * @param {number} limit an integer number of users to enumerate, starting at `offset`
+   * @param {IncomingMessage} request the incoming HTTP request
+   * @returns {Promise<PageResult>} a list if string user identifiers
+   */
+
+  /**
+   * @callback GetTotalCountCallback
+   * @param {ServerRequest} request
+   * @returns {Promise<number>} total count of data entries available
+   */
+
+  /**
+   * A paginator that expects the `page` query parameter on the incoming HTTP request to be a positive integer
+   * specifying the index (starting at 1) of the requested page.
+   *
+   * @param {number} pageSize the number of user-bindings to enumerate on each page. If `0`, pagination is disabled
+   * @param {GetIndexedDataCallback} producer
+   * @param {GetTotalCountCallback|undefined} getTotalCount
+   * @returns {GetPagedDataCallback}
+   */
+  static makeIndexedPaginator(pageSize, producer, getTotalCount = undefined) {
+    return async (page, request) => {
+      const index = page ? Math.max(parseInt(page), 1) : 1
+      if (isNaN(index)) {
+        throw new InvalidInputError("'page' is not a valid number")
+      }
+
+      let totalPages = undefined
+      if (pageSize === 0) {
+        totalPages = 1
+      } else if (getTotalCount) {
+        const totalCount = await getTotalCount(request)
+        totalPages = Math.ceil(totalCount / pageSize)
+      }
+
+      const offset = Math.max(index - 1, 0) * pageSize
+      const result = await producer(offset, pageSize, request)
+      return {result, page: {index, total: totalPages}}
+    }
+  }
+}
+
+/**
+ * A request handler providing an RBAC management endpoint.
+ *
+ * @callback RbacProxyHandler
+ * @param {IncomingMessage} request the incoming HTTP request
+ * @param {ServerResponse} response the outgoing HTTP response
+ */
+
+/**
+ * Returns an RBAC proxy function for handling incoming HTTP requests to GET roles.
+ *
+ * @param {RbacManager} rbacManager
+ * @param {CreateRbacAuthzInputCallback} createAuthzInput
+ * @returns RbacProxyHandler
+ */
 export function proxyRbacGetRoles(rbacManager,
                                   {
                                     createAuthzInput = DefaultSessionInputStrategy.COOKIE
@@ -133,9 +348,17 @@ export function proxyRbacGetRoles(rbacManager,
   }
 }
 
+/**
+ * Returns an RBAC proxy function for handling incoming HTTP requests to GET a user-binding.
+ *
+ * @param {RbacManager} rbacManager
+ * @param {CreateRbacAuthzInputCallback} createAuthzInput
+ * @param {GetUserId} getUserId
+ * @returns RbacProxyHandler
+ */
 export function proxyRbacGetUserBinding(rbacManager,
                                         {
-                                          getUserId = DefaultFunctions.getUserId,
+                                          getUserId = DefaultFunctions.getUserIdFromPathParam,
                                           createAuthzInput = DefaultSessionInputStrategy.COOKIE,
                                         } = {}) {
   const proxy = new RbacProxy(rbacManager, {createAuthzInput, getUserId})
@@ -144,9 +367,17 @@ export function proxyRbacGetUserBinding(rbacManager,
   }
 }
 
+/**
+ * Returns an RBAC proxy function for handling incoming HTTP requests to PUT a user-binding.
+ *
+ * @param {RbacManager} rbacManager
+ * @param {CreateRbacAuthzInputCallback} createAuthzInput
+ * @param {GetUserId} getUserId
+ * @returns RbacProxyHandler
+ */
 export function proxyRbacPutUserBinding(rbacManager,
                                         {
-                                          getUserId = DefaultFunctions.getUserId,
+                                          getUserId = DefaultFunctions.getUserIdFromPathParam,
                                           createAuthzInput = DefaultSessionInputStrategy.COOKIE,
                                         } = {}) {
   const proxy = new RbacProxy(rbacManager, {createAuthzInput, getUserId})
@@ -155,9 +386,17 @@ export function proxyRbacPutUserBinding(rbacManager,
   }
 }
 
+/**
+ * Returns an RBAC proxy function for handling incoming HTTP requests to DELETE a user-binding.
+ *
+ * @param {RbacManager} rbacManager
+ * @param {CreateRbacAuthzInputCallback} createAuthzInput
+ * @param {GetUserId} getUserId
+ * @returns RbacProxyHandler
+ */
 export function proxyRbacDeleteUserBinding(rbacManager,
                                            {
-                                             getUserId = DefaultFunctions.getUserId,
+                                             getUserId = DefaultFunctions.getUserIdFromPathParam,
                                              createAuthzInput = DefaultSessionInputStrategy.COOKIE,
                                            } = {}) {
   const proxy = new RbacProxy(rbacManager, {createAuthzInput, getUserId})
@@ -166,6 +405,13 @@ export function proxyRbacDeleteUserBinding(rbacManager,
   }
 }
 
+/**
+ * Returns an RBAC proxy function for handling incoming HTTP requests to GET a list of all user-bindings.
+ *
+ * @param {RbacManager} rbacManager
+ * @param {CreateRbacAuthzInputCallback} createAuthzInput
+ * @returns RbacProxyHandler
+ */
 export function proxyRbacListUserBindings(rbacManager,
                                           {
                                             createAuthzInput = DefaultSessionInputStrategy.COOKIE,
@@ -176,6 +422,14 @@ export function proxyRbacListUserBindings(rbacManager,
   }
 }
 
+/**
+ * Returns an RBAC proxy function for handling incoming HTTP requests to GET a list of paginated user-bindings.
+ *
+ * @param {RbacManager} rbacManager
+ * @param {PaginateRbacUsersCallback} paginateUsers
+ * @param {CreateRbacAuthzInputCallback} createAuthzInput
+ * @returns RbacProxyHandler
+ */
 export function proxyRbacGetUserBindings(rbacManager, paginateUsers,
                                          {
                                            createAuthzInput = DefaultSessionInputStrategy.COOKIE
@@ -186,13 +440,26 @@ export function proxyRbacGetUserBindings(rbacManager, paginateUsers,
   }
 }
 
+/**
+ * Returns an RBAC proxy function for handling incoming HTTP requests for RBAC management.
+ *
+ * @param rbacManager
+ * @param createAuthzInput
+ * @param paginateUsers
+ * @param getUserId
+ * @returns RbacProxyHandler
+ */
 export function proxyRbac(rbacManager,
                           {
                             createAuthzInput = DefaultSessionInputStrategy.COOKIE,
                             paginateUsers,
-                            getUserId = DefaultFunctions.getUserId
+                            getUserId = DefaultFunctions.getUserIdFromPathParam
                           } = {}) {
-  const proxy = new RbacProxy(rbacManager, {createAuthzInput, paginateUsers, getUserId})
+  const proxy = new RbacProxy(rbacManager, {
+    createAuthzInput,
+    paginateUsers,
+    getUserId
+  })
   return async (request, response) => {
     const url = Url.parse(request.url)
 
