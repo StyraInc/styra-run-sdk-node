@@ -5,7 +5,8 @@ import {toJson, fromJson} from "./helpers.js"
 import {RbacManager} from "./rbac-management.js"
 import {BATCH_MAX_ITEMS} from "./constants.js"
 import Proxy from "./proxy.js"
-import {Paginators} from "./rbac-management.js"
+import {Paginators} from "./rbac-proxy.js"
+import {proxyRbac} from "./rbac-proxy.js";
 import {DefaultSessionInputStrategy} from "./session.js";
 
 // TODO: Add support for versioning/ETags for data API requests
@@ -445,40 +446,33 @@ export class StyraRunClient {
   }
 
   /**
-   * A request handler providing an RBAC management endpoint.
-   *
-   * @callback RbacHandler
-   * @param {IncomingMessage} request the incoming HTTP request
-   * @param {ServerResponse} response the outgoing HTTP response
-   */
-
-  /**
    * Returns a RESTful HTTP API function for managing RBAC bindings.
    *
    * @param {CreateRbacAuthzInputCallback} sessionInputStrategy defaults to {@link DefaultSessionInputStrategy.COOKIE} if not specified
    * @param {PaginateRbacUsersCallback} paginateUsers
-   * @param {OnGetRbacUserBindingCallback} onGetRoleBinding
-   * @param {OnSetRbacUserBindingCallback} onSetRoleBinding
-   * @param {OnDeleteRbacUserBindingCallback} onDeleteRoleBinding
-   * @returns {RbacHandler}
+   * @param {OnGetRbacUserBindingCallback} onGetUserBinding
+   * @param {OnSetRbacUserBindingCallback} onSetUserBinding
+   * @param {OnDeleteRbacUserBindingCallback} onDeleteUserBinding
+   * @returns {RbacProxyHandler}
    */
   rbacProxy({
               paginateUsers,
               sessionInputStrategy = DefaultSessionInputStrategy.COOKIE,
-              onGetRoleBinding = defaultRbacOnGetRoleBindingCallback,
-              onSetRoleBinding = defaultRbacOnSetRoleBindingCallback,
-              onDeleteRoleBinding = defaultRbacOnDeleteRoleBindingCallback,
+              onGetUserBinding = defaultRbacOnGetRoleBindingCallback,
+              onSetUserBinding = defaultRbacOnSetRoleBindingCallback,
+              onDeleteUserBinding = defaultRbacOnDeleteRoleBindingCallback,
             } = {}) {
     const manager = new RbacManager(this, {
       paginateUsers,
       createAuthzInput: sessionInputStrategy,
-      onGetRoleBinding,
-      onSetRoleBinding,
-      onDeleteRoleBinding
+      onGetUserBinding,
+      onSetUserBinding,
+      onDeleteUserBinding
     })
-    return async (request, response) => {
-      await manager.handle(request, response)
-    }
+    return proxyRbac(manager, {
+      createAuthzInput: sessionInputStrategy,
+      paginateUsers
+    })
   }
 }
 
@@ -490,15 +484,15 @@ async function defaultRbacUsersCallback(_, __) {
   return []
 }
 
-async function defaultRbacOnGetRoleBindingCallback(_, __) {
+async function defaultRbacOnGetRoleBindingCallback(_, __, ___) {
   return true
 }
 
-async function defaultRbacOnSetRoleBindingCallback(_, __, ___) {
+async function defaultRbacOnSetRoleBindingCallback(_, __, ___, ____) {
   return true
 }
 
-async function defaultRbacOnDeleteRoleBindingCallback(_, __) {
+async function defaultRbacOnDeleteRoleBindingCallback(_, __, ___) {
   return true
 }
 

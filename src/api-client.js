@@ -110,8 +110,6 @@ export class ApiClient {
       switch (err.statusCode) {
         case undefined: // Unknown error
         case 421: // Misdirected Request
-        // FIXME: remove 500?
-        case 500: // Internal Server Error 
         case 502: // Bad Gateway
         case 503: // Service Unavailable
         case 504: // Gateway Timeout
